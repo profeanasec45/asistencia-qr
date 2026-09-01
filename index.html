@@ -378,7 +378,11 @@ function qrDetectado(qr){
 
   ultimoQR = qr;
   ultimoTiempo = ahora;
-  registrar(qr, true);
+
+  // Congela temporalmente la lectura mientras Apps Script responde.
+  procesando = true;
+  bloquearLecturasHasta = Date.now() + 2500;
+  registrar(qr, true, true);
 }
 
 registrarManual.addEventListener('click', () => {
@@ -396,8 +400,8 @@ codigo.addEventListener('keydown', e => {
   if(e.key === 'Enter') registrarManual.click();
 });
 
-async function registrar(qr, desdeCamara){
-  if(procesando) return;
+async function registrar(qr, desdeCamara, yaBloqueado = false){
+  if(procesando && !yaBloqueado) return;
 
   procesando = true;
 
@@ -412,7 +416,7 @@ async function registrar(qr, desdeCamara){
       qr:qr,
       idClase:clase.value,
       tipo:tipo.value
-    });
+    }, 10000);
 
     if(r.ok){
       mostrar('✓ Registro guardado correctamente.','ok');
@@ -454,6 +458,14 @@ async function registrar(qr, desdeCamara){
     estado('error al enviar: ' + err.message);
   }finally{
     procesando = false;
+    if(desdeCamara){
+      bloquearLecturasHasta = Math.max(bloquearLecturasHasta, Date.now() + 1800);
+      setTimeout(() => {
+        if(scanning && !procesando){
+          scannerText.textContent = 'Listo. Coloca el siguiente QR.';
+        }
+      }, 1900);
+    }
   }
 }
 </script>
