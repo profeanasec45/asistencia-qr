@@ -78,6 +78,22 @@
       margin-top:10px;padding:10px;border-radius:12px;background:#f8fafc;
       font-size:13px;color:#475569;word-break:break-all
     }
+    .overlay{
+      position:fixed;inset:0;z-index:99999;background:#166534;color:#fff;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      text-align:center;padding:28px
+    }
+    .overlay.warning{background:#a16207}
+    .overlay.error{background:#991b1b}
+    .overlayIcono{
+      width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.18);
+      display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:900;
+      margin-bottom:18px
+    }
+    .overlayEstado{font-size:42px;font-weight:1000;letter-spacing:1px}
+    .overlayNombre{font-size:30px;font-weight:900;line-height:1.12;margin-top:12px}
+    .overlayClase{font-size:22px;font-weight:800;margin-top:14px}
+    .overlaySub{font-size:18px;font-weight:800;margin-top:12px;opacity:.95}
   </style>
 </head>
 <body>
@@ -96,6 +112,14 @@
     <div id="confirmClase" class="confirmClase"></div>
     <div id="confirmHora" class="confirmHora"></div>
   </section>
+
+  <div id="overlay" class="overlay hidden">
+    <div id="overlayIcono" class="overlayIcono">✓</div>
+    <div id="overlayEstado" class="overlayEstado">PRESENTE</div>
+    <div id="overlayNombre" class="overlayNombre"></div>
+    <div id="overlayClase" class="overlayClase"></div>
+    <div id="overlaySub" class="overlaySub">REGISTRADO CORRECTAMENTE</div>
+  </div>
 
   <section class="card">
     <label for="pin">PIN de acceso</label>
@@ -162,6 +186,12 @@ const confirmEstado = document.getElementById('confirmEstado');
 const confirmNombre = document.getElementById('confirmNombre');
 const confirmClase = document.getElementById('confirmClase');
 const confirmHora = document.getElementById('confirmHora');
+const overlay = document.getElementById('overlay');
+const overlayIcono = document.getElementById('overlayIcono');
+const overlayEstado = document.getElementById('overlayEstado');
+const overlayNombre = document.getElementById('overlayNombre');
+const overlayClase = document.getElementById('overlayClase');
+const overlaySub = document.getElementById('overlaySub');
 const viewer = document.getElementById('viewer');
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -400,13 +430,57 @@ codigo.addEventListener('keydown', e => {
   if(e.key === 'Enter') registrarManual.click();
 });
 
+
+function mostrarOverlay(tipoVisual, estadoTxt, nombreTxt, claseTxt, subtitulo, ms=1800){
+  overlay.className = 'overlay';
+  if(tipoVisual === 'warning') overlay.classList.add('warning');
+  if(tipoVisual === 'error') overlay.classList.add('error');
+  overlayIcono.textContent = tipoVisual === 'warning' ? '⚠' : (tipoVisual === 'error' ? '✕' : '✓');
+  overlayEstado.textContent = estadoTxt || '';
+  overlayNombre.textContent = nombreTxt || '';
+  overlayClase.textContent = claseTxt || '';
+  overlaySub.textContent = subtitulo || '';
+  overlay.classList.remove('hidden');
+  setTimeout(() => overlay.classList.add('hidden'), ms);
+}
+
+async function confirmarEnSegundoPlano(qr, claseId, tipoRegistro){
+  // En Safari/iPhone, Apps Script puede guardar correctamente y aun así tardar
+  // o no ejecutar el callback JSONP. Para uso real, damos confirmación local inmediata
+  // y dejamos que el backend procese; los duplicados siguen protegidos en Apps Script.
+  try{
+    await jsonp({
+      accion:'registrar',
+      pin:pinActual,
+      qr:qr,
+      idClase:claseId,
+      tipo:tipoRegistro
+    }, 9000);
+  }catch(e){
+    // No bloqueamos el flujo del salón si el backend ya recibió la solicitud.
+    console.log('Respuesta tardía/no recibida:', e.message);
+  }
+}
+
 async function registrar(qr, desdeCamara, yaBloqueado = false){
   if(procesando && !yaBloqueado) return;
 
+  if(!clase.value){
+    mostrar('Selecciona una clase.','warning');
+    return;
+  }
+
   procesando = true;
 
+  const claseTexto = clase.options[clase.selectedIndex].textContent;
+  const tipoTexto = tipo.options[tipo.selectedIndex].textContent.toUpperCase();
+
   if(desdeCamara){
-    scannerText.textContent = 'QR detectado. Registrando…';
+    // Confirmación visual inmediata para que en el salón el flujo no se detenga.
+    // El backend mantiene la protección contra duplicados.
+    bloquearLecturasHasta = Date.now() + 2200;
+    scannerText.textContent = '✓ QR leído. Registrando…';
+    mostrarOverlay('ok', tipoTexto, qr, claseTexto, 'REGISTRO ENVIADO', 1600);
   }
 
   try{
@@ -416,46 +490,53 @@ async function registrar(qr, desdeCamara, yaBloqueado = false){
       qr:qr,
       idClase:clase.value,
       tipo:tipo.value
-    }, 10000);
+    }, 9000);
 
-    if(r.ok){
-      mostrar('✓ Registro guardado correctamente.','ok');
-      estado('registrado: ' + r.alumno.nombre);
+    if(r && r.ok){
+      const nombre = (r.alumno && r.alumno.nombre) ? r.alumno.nombre : qr;
+
+      mostrar('✓ ' + nombre + ' · ' + (r.tipo || tipoTexto),'ok');
+      estado('registrado: ' + nombre);
       codigo.value = '';
 
-      confirmEstado.textContent = r.tipo || tipo.value;
-      confirmNombre.textContent = r.alumno.nombre || '';
-      confirmClase.textContent = clase.options[clase.selectedIndex].textContent;
-      confirmHora.textContent = 'Hora: ' + (r.hora || '');
-      confirmacion.classList.remove('hidden');
+      if(desdeCamara){
+        mostrarOverlay('ok', (r.tipo || tipoTexto), nombre, claseTexto, 'REGISTRADO CORRECTAMENTE', 1800);
+        scannerText.textContent = '✓ Registrado. Listo para el siguiente.';
+      }
 
       if(navigator.vibrate) navigator.vibrate([80,50,80]);
 
+    } else if(r && r.duplicado){
+      const nombre = (r.alumno && r.alumno.nombre) ? r.alumno.nombre : qr;
+      mostrar(r.mensaje || 'Ya estaba registrado.','warning');
+      estado('duplicado: ' + nombre);
+
       if(desdeCamara){
-        // Durante 2 segundos no acepta ninguna lectura. Evita que el mismo
-        // QR pase inmediatamente al mensaje de duplicado.
-        bloquearLecturasHasta = Date.now() + 2000;
-        scannerText.textContent = '✓ Registrado. Espera…';
-        setTimeout(() => {
-          confirmacion.classList.add('hidden');
-          if(scanning) scannerText.textContent = 'Listo. Coloca el siguiente QR.';
-        },2000);
+        mostrarOverlay('warning', 'YA REGISTRADO', nombre, claseTexto, 'PUEDES PASAR AL SIGUIENTE', 1600);
+        scannerText.textContent = 'Ya estaba registrado. Siguiente QR.';
       }
 
-    }else{
-      mostrar(r.mensaje || 'No se pudo registrar.', r.duplicado ? 'warning' : 'error');
-      estado('respuesta: ' + (r.mensaje || 'sin registro'));
+    } else {
+      const msg = (r && r.mensaje) ? r.mensaje : 'No se pudo confirmar el registro.';
+      mostrar(msg,'error');
+      estado('respuesta: ' + msg);
 
       if(desdeCamara){
-        scannerText.textContent = r.duplicado
-          ? 'Ya estaba registrado. Puedes pasar al siguiente.'
-          : 'QR leído pero no registrado.';
+        mostrarOverlay('error', 'REVISAR', qr, claseTexto, msg, 1800);
+        scannerText.textContent = 'Revisa este registro.';
       }
     }
 
   }catch(err){
-    mostrar('Error: ' + err.message,'error');
-    estado('error al enviar: ' + err.message);
+    // Safari a veces no recibe el callback aunque Apps Script sí guardó.
+    // Como ya comprobamos que el backend recibe la solicitud, no detenemos la fila.
+    mostrar('Registro enviado. Verificación de respuesta pendiente.','warning');
+    estado('respuesta no recibida, solicitud enviada: ' + qr);
+
+    if(desdeCamara){
+      mostrarOverlay('ok', tipoTexto, qr, claseTexto, 'REGISTRO ENVIADO', 1600);
+      scannerText.textContent = 'Registro enviado. Continúa con el siguiente QR.';
+    }
   }finally{
     procesando = false;
     if(desdeCamara){
