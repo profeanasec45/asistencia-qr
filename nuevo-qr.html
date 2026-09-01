@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <meta name="theme-color" content="#0B2A4A">
   <title>Generar QR de alumno</title>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-  <style>
+<style>
     *{box-sizing:border-box}
     body{
       margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
@@ -48,7 +45,7 @@
     .qrTitle{font-size:20px;font-weight:900;color:#0B2A4A}
     .qrName{font-size:22px;font-weight:900;line-height:1.15;margin-top:10px}
     .qrMeta{font-size:17px;font-weight:700;margin-top:7px}
-    #qrCanvas{display:flex;justify-content:center;align-items:center;margin:16px auto} #qrCanvas img,#qrCanvas canvas{max-width:100%;height:auto!important}
+    #qrCanvas{display:block;margin:16px auto;max-width:100%;height:auto;background:#fff}
     .qrId{font-family:monospace;font-size:19px;font-weight:900;letter-spacing:.5px}
     .help{font-size:14px;color:#64748b;line-height:1.4}
     @media print{
@@ -88,13 +85,13 @@
       <div class="qrTitle">ASISTENCIA QR</div>
       <div id="nombre" class="qrName"></div>
       <div id="meta" class="qrMeta"></div>
-      <div id="qrCanvas" aria-label="Código QR del alumno"></div>
+      <img id="qrCanvas" alt="Código QR del alumno" width="340" height="340">
       <div id="qrId" class="qrId"></div>
     </div>
 
     <div class="actions">
       <button id="imprimir" class="primary">🖨 Imprimir tarjeta</button>
-      <button id="guardarPng" class="secondary">Guardar QR como PNG</button>
+      <button id="guardarPng" class="secondary">Abrir QR para guardar</button>
     </div>
   </section>
 </main>
@@ -163,11 +160,6 @@ generar.addEventListener('click', async ()=>{
     mostrar('Escribe un ID válido, por ejemplo ALU-0228.','warning');
     return;
   }
-  if(typeof QRCode==='undefined'){
-    mostrar('No se cargó el generador QR. Revisa tu conexión.','error');
-    return;
-  }
-
   generar.disabled=true;
   generar.textContent='Buscando alumno…';
   resultado.classList.add('hidden');
@@ -185,13 +177,9 @@ generar.addEventListener('click', async ()=>{
     meta.textContent=a.grupo+' · No. '+(a.numeroLista || '—');
     qrId.textContent=a.qrId || a.idAlumno;
 
-    qrCanvas.innerHTML='';
-    new QRCode(qrCanvas, {
-      text: a.qrId || a.idAlumno,
-      width: 340,
-      height: 340,
-      correctLevel: QRCode.CorrectLevel.M
-    });
+    const valorQR = a.qrId || a.idAlumno;
+    qrCanvas.src = 'https://api.qrserver.com/v1/create-qr-code/?size=340x340&margin=12&data=' + encodeURIComponent(valorQR);
+    qrCanvas.alt = 'QR ' + valorQR;
 
     resultado.classList.remove('hidden');
     mostrar('✓ QR generado correctamente.','ok');
@@ -211,19 +199,11 @@ idAlumno.addEventListener('input',()=>{
 imprimir.addEventListener('click',()=>window.print());
 
 guardarPng.addEventListener('click',()=>{
-  const canvas=qrCanvas.querySelector('canvas');
-  const img=qrCanvas.querySelector('img');
-  const link=document.createElement('a');
-  link.download=(qrId.textContent || 'QR-alumno')+'.png';
-  if(canvas){
-    link.href=canvas.toDataURL('image/png');
-  }else if(img){
-    link.href=img.src;
-  }else{
+  if(!qrCanvas.src){
     mostrar('Primero genera el QR.','warning');
     return;
   }
-  link.click();
+  window.open(qrCanvas.src, '_blank');
 });
 </script>
 </body>
