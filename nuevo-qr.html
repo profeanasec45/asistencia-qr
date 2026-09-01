@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0B2A4A">
   <title>Generar QR de alumno</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <style>
     *{box-sizing:border-box}
@@ -48,7 +48,7 @@
     .qrTitle{font-size:20px;font-weight:900;color:#0B2A4A}
     .qrName{font-size:22px;font-weight:900;line-height:1.15;margin-top:10px}
     .qrMeta{font-size:17px;font-weight:700;margin-top:7px}
-    #qrCanvas{display:block;margin:16px auto;max-width:100%;height:auto}
+    #qrCanvas{display:flex;justify-content:center;align-items:center;margin:16px auto} #qrCanvas img,#qrCanvas canvas{max-width:100%;height:auto!important}
     .qrId{font-family:monospace;font-size:19px;font-weight:900;letter-spacing:.5px}
     .help{font-size:14px;color:#64748b;line-height:1.4}
     @media print{
@@ -88,7 +88,7 @@
       <div class="qrTitle">ASISTENCIA QR</div>
       <div id="nombre" class="qrName"></div>
       <div id="meta" class="qrMeta"></div>
-      <canvas id="qrCanvas" width="340" height="340"></canvas>
+      <div id="qrCanvas" aria-label="Código QR del alumno"></div>
       <div id="qrId" class="qrId"></div>
     </div>
 
@@ -185,10 +185,12 @@ generar.addEventListener('click', async ()=>{
     meta.textContent=a.grupo+' · No. '+(a.numeroLista || '—');
     qrId.textContent=a.qrId || a.idAlumno;
 
-    await QRCode.toCanvas(qrCanvas, a.qrId || a.idAlumno, {
-      width:340,
-      margin:3,
-      errorCorrectionLevel:'M'
+    qrCanvas.innerHTML='';
+    new QRCode(qrCanvas, {
+      text: a.qrId || a.idAlumno,
+      width: 340,
+      height: 340,
+      correctLevel: QRCode.CorrectLevel.M
     });
 
     resultado.classList.remove('hidden');
@@ -209,9 +211,18 @@ idAlumno.addEventListener('input',()=>{
 imprimir.addEventListener('click',()=>window.print());
 
 guardarPng.addEventListener('click',()=>{
+  const canvas=qrCanvas.querySelector('canvas');
+  const img=qrCanvas.querySelector('img');
   const link=document.createElement('a');
   link.download=(qrId.textContent || 'QR-alumno')+'.png';
-  link.href=qrCanvas.toDataURL('image/png');
+  if(canvas){
+    link.href=canvas.toDataURL('image/png');
+  }else if(img){
+    link.href=img.src;
+  }else{
+    mostrar('Primero genera el QR.','warning');
+    return;
+  }
   link.click();
 });
 </script>
