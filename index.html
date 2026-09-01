@@ -44,6 +44,20 @@
       display:none;padding:14px;border-radius:14px;margin-bottom:14px;
       font-weight:700;line-height:1.35
     }
+    .confirmacion{
+      background:#dcfce7;color:#14532d;border:2px solid #86efac;
+      border-radius:20px;padding:20px 16px;margin-bottom:14px;text-align:center;
+      box-shadow:0 4px 14px rgba(0,0,0,.06)
+    }
+    .confirmIcono{
+      width:58px;height:58px;border-radius:50%;background:#166534;color:white;
+      display:flex;align-items:center;justify-content:center;margin:0 auto 8px;
+      font-size:36px;font-weight:900
+    }
+    .confirmEstado{font-size:26px;font-weight:900;letter-spacing:.5px}
+    .confirmNombre{font-size:22px;font-weight:900;margin-top:7px;line-height:1.15}
+    .confirmClase{font-size:17px;font-weight:700;margin-top:8px}
+    .confirmHora{font-size:14px;margin-top:5px;color:#3f6212}
     .ok{display:block;background:#dcfce7;color:#166534}
     .warning{display:block;background:#fef3c7;color:#92400e}
     .error{display:block;background:#fee2e2;color:#991b1b}
@@ -74,6 +88,14 @@
   </section>
 
   <div id="mensaje" class="status"></div>
+
+  <section id="confirmacion" class="confirmacion hidden">
+    <div id="confirmIcono" class="confirmIcono">✓</div>
+    <div id="confirmEstado" class="confirmEstado">PRESENTE</div>
+    <div id="confirmNombre" class="confirmNombre"></div>
+    <div id="confirmClase" class="confirmClase"></div>
+    <div id="confirmHora" class="confirmHora"></div>
+  </section>
 
   <section class="card">
     <label for="pin">PIN de acceso</label>
@@ -135,6 +157,11 @@ const registrarManual = document.getElementById('registrarManual');
 const mensaje = document.getElementById('mensaje');
 const scannerText = document.getElementById('scannerText');
 const debug = document.getElementById('debug');
+const confirmacion = document.getElementById('confirmacion');
+const confirmEstado = document.getElementById('confirmEstado');
+const confirmNombre = document.getElementById('confirmNombre');
+const confirmClase = document.getElementById('confirmClase');
+const confirmHora = document.getElementById('confirmHora');
 const viewer = document.getElementById('viewer');
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -147,6 +174,7 @@ let pinActual = '';
 let ultimoQR = '';
 let ultimoTiempo = 0;
 let rafId = null;
+let bloquearLecturasHasta = 0;
 
 function mostrar(texto, css){
   mensaje.className = 'status ' + css;
@@ -342,6 +370,7 @@ function qrDetectado(qr){
   if(procesando) return;
 
   const ahora = Date.now();
+  if(ahora < bloquearLecturasHasta) return;
 
   if(qr === ultimoQR && ahora - ultimoTiempo < 4000){
     return;
@@ -386,17 +415,27 @@ async function registrar(qr, desdeCamara){
     });
 
     if(r.ok){
-      mostrar('✓ ' + r.alumno.nombre + ' · ' + r.tipo + ' · ' + r.hora,'ok');
+      mostrar('✓ Registro guardado correctamente.','ok');
       estado('registrado: ' + r.alumno.nombre);
       codigo.value = '';
 
-      if(navigator.vibrate) navigator.vibrate(100);
+      confirmEstado.textContent = r.tipo || tipo.value;
+      confirmNombre.textContent = r.alumno.nombre || '';
+      confirmClase.textContent = clase.options[clase.selectedIndex].textContent;
+      confirmHora.textContent = 'Hora: ' + (r.hora || '');
+      confirmacion.classList.remove('hidden');
+
+      if(navigator.vibrate) navigator.vibrate([80,50,80]);
 
       if(desdeCamara){
-        scannerText.textContent = '✓ Registrado. Listo para el siguiente QR.';
+        // Durante 2 segundos no acepta ninguna lectura. Evita que el mismo
+        // QR pase inmediatamente al mensaje de duplicado.
+        bloquearLecturasHasta = Date.now() + 2000;
+        scannerText.textContent = '✓ Registrado. Espera…';
         setTimeout(() => {
-          if(scanning) scannerText.textContent = 'Coloca el siguiente QR dentro del recuadro.';
-        },900);
+          confirmacion.classList.add('hidden');
+          if(scanning) scannerText.textContent = 'Listo. Coloca el siguiente QR.';
+        },2000);
       }
 
     }else{
