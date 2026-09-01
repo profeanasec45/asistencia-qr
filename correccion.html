@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#0B2A4A">
+<title>Corrección de Asistencia</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f4f7fb;color:#17202b}
+.app{width:min(100%,900px);margin:auto;padding:15px}
+.header{background:#0B2A4A;color:white;padding:20px;border-radius:18px;margin-bottom:14px}
+.header h1{margin:0;font-size:26px}.header p{margin:6px 0 0;opacity:.86}
+.card{background:#fff;border-radius:18px;padding:17px;margin-bottom:14px;box-shadow:0 3px 12px rgba(0,0,0,.06)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+label{display:block;font-weight:800;margin-bottom:6px}
+input,select{width:100%;min-height:49px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:12px;font-size:16px;background:#fff}
+button,a.button{border:0;border-radius:12px;min-height:49px;padding:12px 15px;font-size:16px;font-weight:800;cursor:pointer;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:center}
+.primary{background:#0B2A4A;color:white}.secondary{background:#e8eef5;color:#0B2A4A}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.actions>*{flex:1;min-width:160px}
+.hidden{display:none!important}
+.status{padding:13px 14px;border-radius:12px;margin-bottom:12px;font-weight:750}
+.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}.error{background:#fee2e2;color:#991b1b}
+.student{padding:14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;margin-top:14px}
+.student .name{font-size:20px;font-weight:900;color:#0B2A4A}
+.student .meta{margin-top:4px;color:#64748b}
+.current{margin-top:12px;padding:10px 12px;border-radius:10px;background:white;border:1px solid #e2e8f0}
+.badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:900}
+.PRESENTE{background:#dcfce7;color:#166534}.RETARDO{background:#fef3c7;color:#92400e}.JUSTIFICADA{background:#dbeafe;color:#1d4ed8}.FALTA{background:#fee2e2;color:#991b1b}
+.note{font-size:13px;color:#64748b;line-height:1.45}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.header h1{font-size:23px}}
+</style>
+</head>
+<body>
+<main class="app">
+<section class="header">
+  <h1>✏️ Corrección de Asistencia</h1>
+  <p>Corrige un registro sin modificar el escáner</p>
+</section>
+
+<div id="mensaje" class="status hidden"></div>
+
+<section class="card">
+  <div class="grid">
+    <div>
+      <label for="pin">PIN</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Tu PIN">
+    </div>
+    <div>
+      <label for="fecha">Fecha</label>
+      <input id="fecha" type="date">
+    </div>
+    <div>
+      <label for="clase">Grupo y materia</label>
+      <select id="clase"><option value="">Primero escribe tu PIN</option></select>
+    </div>
+    <div>
+      <label for="alumno">Alumno</label>
+      <select id="alumno" disabled><option value="">Selecciona primero grupo y fecha</option></select>
+    </div>
+  </div>
+
+  <div id="ficha" class="student hidden">
+    <div id="nombre" class="name"></div>
+    <div id="meta" class="meta"></div>
+    <div class="current">
+      Estatus actual: <span id="estatusActual"></span>
+      <span id="horaActual"></span>
+    </div>
+  </div>
+</section>
+
+<section id="edicion" class="card hidden">
+  <div class="grid">
+    <div>
+      <label for="estatus">Nuevo estatus</label>
+      <select id="estatus">
+        <option value="PRESENTE">PRESENTE</option>
+        <option value="RETARDO">RETARDO</option>
+        <option value="JUSTIFICADA">JUSTIFICADA</option>
+        <option value="FALTA">FALTA</option>
+      </select>
+    </div>
+    <div>
+      <label for="hora">Hora opcional</label>
+      <input id="hora" type="time" step="1">
+    </div>
+  </div>
+  <p class="note">Si el alumno aparece como FALTA porque no había registro, selecciona PRESENTE y guarda. Para una fecha pasada puedes dejar la hora vacía.</p>
+  <div class="actions">
+    <button id="guardar" class="primary">Guardar corrección</button>
+  </div>
+</section>
+
+<section class="card">
+  <div class="actions" style="margin-top:0">
+    <a class="button secondary" href="reportes.html">📊 Ir a Reportes</a>
+  </div>
+  <p class="note">Cada cambio queda registrado también en la hoja <strong>Correcciones_Asistencia</strong> como historial de seguridad.</p>
+</section>
+</main>
+
+<script>
+const API_URL='https://script.google.com/macros/s/AKfycbx4xBisUluV6eAbiLwG5K0phEWNdl8fUOJF68M66YqWetADrT-Zu0Mu86PFvKlT2oJS/exec';
+
+const pin=document.getElementById('pin');
+const fecha=document.getElementById('fecha');
+const clase=document.getElementById('clase');
+const alumno=document.getElementById('alumno');
+const ficha=document.getElementById('ficha');
+const edicion=document.getElementById('edicion');
+const nombre=document.getElementById('nombre');
+const meta=document.getElementById('meta');
+const estatusActual=document.getElementById('estatusActual');
+const horaActual=document.getElementById('horaActual');
+const estatus=document.getElementById('estatus');
+const hora=document.getElementById('hora');
+const guardar=document.getElementById('guardar');
+const mensaje=document.getElementById('mensaje');
+
+let alumnosActuales=[];
+
+function hoyLocal(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+fecha.value=hoyLocal();
+
+function mostrar(t,tipo='ok'){
+  mensaje.textContent=t;
+  mensaje.className='status '+tipo;
+}
+function ocultar(){mensaje.className='status hidden'}
+
+function jsonp(params,timeoutMs=20000){
+  return new Promise((resolve,reject)=>{
+    const cb='__corr_'+Date.now()+'_'+Math.floor(Math.random()*100000);
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>{cleanup();reject(new Error('Tiempo de espera agotado.'));},timeoutMs);
+    function cleanup(){clearTimeout(timer);try{delete window[cb]}catch(e){window[cb]=undefined}if(script.parentNode)script.parentNode.removeChild(script)}
+    window[cb]=data=>{cleanup();resolve(data)};
+    const u=new URL(API_URL);
+    u.searchParams.set('api','1');u.searchParams.set('callback',cb);u.searchParams.set('_',Date.now());
+    Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,String(v??'')));
+    script.src=u.toString();
+    script.onerror=()=>{cleanup();reject(new Error('No fue posible conectar con el servidor.'))};
+    document.head.appendChild(script);
+  });
+}
+
+async function cargarClases(){
+  if(!pin.value.trim()){mostrar('Escribe primero tu PIN.','warn');return}
+  clase.innerHTML='<option value="">Cargando…</option>';
+  try{
+    const r=await jsonp({accion:'clases',pin:pin.value.trim()});
+    if(!r.ok){mostrar(r.mensaje||'No se pudieron cargar las clases.','error');return}
+    clase.innerHTML='<option value="">Selecciona grupo y materia</option>';
+    r.clases.forEach(c=>{
+      const o=document.createElement('option');
+      o.value=c.idClase;o.textContent=c.grupo+' · '+c.asignatura;clase.appendChild(o);
+    });
+    ocultar();
+  }catch(e){mostrar(e.message,'error')}
+}
+
+clase.addEventListener('focus',()=>{
+  if(clase.options.length<=1 || clase.options[0].textContent.includes('Primero')) cargarClases();
+});
+
+pin.addEventListener('change',()=>{
+  clase.innerHTML='<option value="">Toca aquí para cargar clases</option>';
+  alumno.innerHTML='<option value="">Selecciona primero grupo y fecha</option>';
+  alumno.disabled=true;ficha.classList.add('hidden');edicion.classList.add('hidden');
+});
+
+clase.addEventListener('change',cargarAlumnos);
+fecha.addEventListener('change',()=>{
+  if(clase.value)cargarAlumnos();
+});
+
+async function cargarAlumnos(){
+  ficha.classList.add('hidden');edicion.classList.add('hidden');
+  alumno.disabled=true;alumno.innerHTML='<option value="">Cargando alumnos…</option>';
+  if(!clase.value||!fecha.value)return;
+  try{
+    const r=await jsonp({
+      accion:'correccion_datos',
+      pin:pin.value.trim(),
+      idClase:clase.value,
+      fecha:fecha.value
+    });
+    if(!r.ok){mostrar(r.mensaje||'No se pudieron cargar los alumnos.','error');return}
+    alumnosActuales=r.alumnos||[];
+    alumno.innerHTML='<option value="">Selecciona un alumno</option>';
+    alumnosActuales.forEach(a=>{
+      const o=document.createElement('option');
+      o.value=a.idAlumno;
+      o.textContent=(a.numeroLista?a.numeroLista+'. ':'')+a.nombre+' — '+a.estatusActual;
+      alumno.appendChild(o);
+    });
+    alumno.disabled=false;ocultar();
+  }catch(e){mostrar(e.message,'error')}
+}
+
+alumno.addEventListener('change',()=>{
+  const a=alumnosActuales.find(x=>x.idAlumno===alumno.value);
+  if(!a){ficha.classList.add('hidden');edicion.classList.add('hidden');return}
+  nombre.textContent=a.nombre;
+  meta.textContent='No. '+(a.numeroLista||'—')+' · '+a.grupo+' · '+a.idAlumno;
+  estatusActual.innerHTML='<span class="badge '+a.estatusActual+'">'+a.estatusActual+'</span>';
+  horaActual.textContent=a.horaActual?' · '+a.horaActual:'';
+  estatus.value=a.estatusActual;
+  hora.value='';
+  ficha.classList.remove('hidden');edicion.classList.remove('hidden');
+});
+
+guardar.addEventListener('click',async()=>{
+  if(!alumno.value){mostrar('Selecciona un alumno.','warn');return}
+  const a=alumnosActuales.find(x=>x.idAlumno===alumno.value);
+  const confirmacion=confirm(
+    '¿Guardar esta corrección?\\n\\n'+
+    a.nombre+'\\n'+fecha.value+' · '+clase.options[clase.selectedIndex].text+'\\n'+
+    a.estatusActual+' → '+estatus.value
+  );
+  if(!confirmacion)return;
+
+  guardar.disabled=true;guardar.textContent='Guardando…';
+  try{
+    const r=await jsonp({
+      accion:'corregir_asistencia',
+      pin:pin.value.trim(),
+      idClase:clase.value,
+      fecha:fecha.value,
+      idAlumno:alumno.value,
+      estatus:estatus.value,
+      hora:hora.value
+    },25000);
+
+    if(!r.ok){mostrar(r.mensaje||'No se pudo guardar.','error');return}
+    mostrar('✓ '+r.mensaje+' '+r.alumno.nombre+' ahora está como '+r.estatusNuevo+'.','ok');
+    await cargarAlumnos();
+    alumno.value=r.alumno.idAlumno;
+    alumno.dispatchEvent(new Event('change'));
+  }catch(e){mostrar('Error: '+e.message,'error')}
+  finally{guardar.disabled=false;guardar.textContent='Guardar corrección'}
+});
+</script>
+</body>
+</html>
