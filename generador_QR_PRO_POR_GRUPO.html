@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0d3558">
+<title>Asistencia QR Pro · QR por grupo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--navy:#0d3558;--bg:#f4f7fb;--green:#14854b;--text:#172a3b}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1050px;margin:auto;padding:18px}
+.hero{background:var(--navy);color:#fff;border-radius:22px;padding:20px}
+.hero h1{margin:0 0 4px;font-size:27px} .hero p{margin:0;opacity:.9}
+.card{background:white;border-radius:20px;padding:16px;margin-top:14px;box-shadow:0 7px 25px #10203016}
+.grid{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+label{font-size:13px;font-weight:800;display:block;margin:0 0 6px}
+input,select,button{width:100%;min-height:48px;border-radius:12px;padding:10px;font-size:16px;border:1px solid #cad6e1}
+button{border:0;background:var(--navy);color:#fff;font-weight:800;cursor:pointer}
+.green{background:var(--green)} .light{background:#eaf1f7;color:var(--navy)}
+.msg{padding:11px 13px;background:#eef4f8;border-radius:12px;margin-top:10px;font-weight:700}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px} .actions button{width:auto;padding-inline:18px}
+.sheet{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:15px}
+.qrcard{background:#fff;border:1px solid #d6e0e8;border-radius:14px;padding:12px;text-align:center;break-inside:avoid}
+.qr{display:flex;justify-content:center;margin:8px 0}
+.qrcard h3{font-size:15px;margin:6px 0 2px}
+.meta{font-size:12px;color:#657789}
+.groupTitle{grid-column:1/-1;font-size:21px;font-weight:900;margin:14px 0 0}
+@media(max-width:750px){.grid{grid-template-columns:1fr}.sheet{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:460px){.sheet{grid-template-columns:1fr}}
+@media print{
+ body{background:#fff} .no-print,.hero p{display:none!important} .wrap{max-width:none;padding:0}
+ .hero{background:#fff!important;color:#000;padding:0 0 10px;border-radius:0} .card{box-shadow:none;padding:0;margin:0}
+ .sheet{grid-template-columns:repeat(3,1fr);gap:8mm 5mm}
+ .qrcard{border:1px solid #aaa;border-radius:8px;padding:4mm}
+ .groupTitle{font-size:16pt;page-break-after:avoid}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>▣ Asistencia QR Pro</h1>
+    <p>Generador masivo de QR permanentes por grupo.</p>
+  </div>
+
+  <div class="card">
+    <div class="grid no-print">
+      <div>
+        <label>PIN de acceso</label>
+        <input id="pin" inputmode="numeric" placeholder="PIN">
+      </div>
+      <div>
+        <label>Grupo</label>
+        <select id="grupo"><option value="">Primero carga los grupos</option></select>
+      </div>
+      <button id="cargar">Cargar alumnos</button>
+    </div>
+
+    <div id="msg" class="msg no-print">Carga el padrón comercial y elige un grupo.</div>
+
+    <div class="actions no-print">
+      <button id="generar" class="green">Generar QR del grupo</button>
+      <button id="todos" class="light">Generar todos los grupos</button>
+      <button id="imprimir" class="light">Imprimir / Guardar PDF</button>
+    </div>
+
+    <div id="sheet" class="sheet"></div>
+  </div>
+</div>
+
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbwKzOr-7K1fJOKCUnhJ-vBUgFSbbnns5AJnZoXogZPBxFDOXYZYqK4SwJvfI30fBXhWig/exec';
+let ALUMNOS = [];
+const $ = id => document.getElementById(id);
+
+function jsonp(params){
+  return new Promise((resolve,reject)=>{
+    const cb="cb_"+Date.now()+"_"+Math.random().toString(36).slice(2);
+    const s=document.createElement("script");
+    const timer=setTimeout(()=>{cleanup();reject(new Error("Tiempo de espera agotado."))},15000);
+    function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}
+    window[cb]=d=>{cleanup();resolve(d)};
+    params.callback=cb; params.api="1";
+    s.src=API+"?"+new URLSearchParams(params).toString();
+    s.onerror=()=>{cleanup();reject(new Error("No se pudo conectar con el sistema comercial."))};
+    document.body.appendChild(s);
+  });
+}
+
+async function cargar(){
+  const pin=$("pin").value.trim();
+  if(!pin){ $("msg").textContent="Escribe el PIN."; return; }
+  $("msg").textContent="Cargando alumnos de la versión comercial...";
+  try{
+    const r=await jsonp({accion:"alumnos_qr",pin});
+    if(!r.ok) throw new Error(r.mensaje||"No autorizado");
+    ALUMNOS=r.alumnos||[];
+    const grupos=[...new Set(ALUMNOS.map(a=>a.grupo).filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    $("grupo").innerHTML='<option value="">Selecciona…</option>'+
+      grupos.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join("");
+    $("msg").textContent=`${ALUMNOS.length} alumno(s) activo(s) cargados en ${grupos.length} grupo(s).`;
+  }catch(e){ $("msg").textContent=e.message; }
+}
+
+function renderGrupo(grupo, alumnos, append=false){
+  const root=$("sheet");
+  if(!append) root.innerHTML="";
+  const title=document.createElement("div");
+  title.className="groupTitle";
+  title.textContent="Grupo "+grupo;
+  root.appendChild(title);
+
+  alumnos.sort((a,b)=>Number(a.numeroLista||9999)-Number(b.numeroLista||9999)).forEach(a=>{
+    const c=document.createElement("div");
+    c.className="qrcard";
+    c.innerHTML=`<div class="qr"></div>
+      <h3>${esc(a.nombre)}</h3>
+      <div class="meta">#${esc(a.numeroLista)} · ${esc(a.grupo)} · ${esc(a.idAlumno)}</div>`;
+    root.appendChild(c);
+    new QRCode(c.querySelector(".qr"), {
+      text:String(a.qrId||a.idAlumno),
+      width:150,
+      height:150,
+      correctLevel:QRCode.CorrectLevel.M
+    });
+  });
+}
+
+function generarGrupo(){
+  const g=$("grupo").value;
+  if(!g){ $("msg").textContent="Selecciona un grupo."; return; }
+  const alumnos=ALUMNOS.filter(x=>x.grupo===g);
+  renderGrupo(g,alumnos,false);
+  $("msg").textContent=`Generados ${alumnos.length} QR del grupo ${g}.`;
+}
+
+function generarTodos(){
+  if(!ALUMNOS.length){ $("msg").textContent="Primero carga los alumnos."; return; }
+  $("sheet").innerHTML="";
+  const grupos=[...new Set(ALUMNOS.map(a=>a.grupo).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  grupos.forEach(g=>renderGrupo(g,ALUMNOS.filter(x=>x.grupo===g),true));
+  $("msg").textContent=`Generados ${ALUMNOS.length} QR en ${grupos.length} grupo(s).`;
+}
+
+function esc(s){
+  return String(s??"").replace(/[&<>"']/g,m=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[m]));
+}
+
+$("cargar").onclick=cargar;
+$("generar").onclick=generarGrupo;
+$("todos").onclick=generarTodos;
+$("imprimir").onclick=()=>window.print();
+</script>
+</body>
+</html>
