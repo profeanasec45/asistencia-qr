@@ -84,13 +84,40 @@ async function cargarClases(){
     $("info").textContent=(r.clases||[]).length ? "Selecciona el grupo/clase y activa la cámara." : "No hay grupos o clases disponibles.";
   }catch(e){$("info").textContent=e.message}
 }
+function detenerCamara(mensaje=true){
+  scanning=false;
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+    stream=null;
+  }
+  const v=$("video");
+  try{v.pause()}catch(e){}
+  v.srcObject=null;
+  $("cam").textContent="Activar cámara";
+  $("cam").classList.add("secondary");
+  if(mensaje) $("info").textContent="Cámara detenida. Puedes volver a activarla cuando quieras.";
+}
 async function activarCamara(){
+  if(stream){
+    detenerCamara(true);
+    return;
+  }
   if(!$("clase").value){$("info").textContent="Selecciona primero el grupo o clase.";return}
   try{
-    if(stream) stream.getTracks().forEach(t=>t.stop());
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
-    $("video").srcObject=stream; await $("video").play(); scanning=true; $("info").textContent="Cámara activa. Coloca el QR dentro del recuadro."; requestAnimationFrame(scan);
-  }catch(e){$("info").textContent="No se pudo abrir la cámara. Revisa el permiso de cámara del navegador."}
+    $("video").srcObject=stream;
+    await $("video").play();
+    scanning=true;
+    $("cam").textContent="Detener cámara";
+    $("cam").classList.remove("secondary");
+    $("info").textContent="Cámara activa. Coloca el QR dentro del recuadro.";
+    requestAnimationFrame(scan);
+  }catch(e){
+    stream=null;
+    scanning=false;
+    $("cam").textContent="Activar cámara";
+    $("info").textContent="No se pudo abrir la cámara. Revisa el permiso de cámara del navegador.";
+  }
 }
 function scan(){
   if(!scanning) return;
@@ -129,6 +156,6 @@ function mostrar(r){
 $("cargar").onclick=cargarClases;$("cam").onclick=activarCamara;
 $("registrarManual").onclick=()=>{const v=$("manual").value.trim();if(v)registrar(v);else $("info").textContent="Escribe el ID del alumno."};
 $("cerrar").onclick=()=>{$("overlay").classList.remove("show");$("manual").value="";$("info").textContent="Listo para el siguiente alumno."};
-document.addEventListener("visibilitychange",()=>{if(document.hidden&&stream){stream.getTracks().forEach(t=>t.stop());stream=null;scanning=false}});
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&stream)detenerCamara(false)});
 </script>
 </body></html>
