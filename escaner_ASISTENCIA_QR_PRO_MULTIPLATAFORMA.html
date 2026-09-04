@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d3558">
+<title>Asistencia QR Pro · Escáner</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+:root{--navy:#0d3558;--blue:#174b75;--bg:#f4f7fb;--green:#138a4b;--amber:#c77b00;--red:#c53b3b;--text:#142638}
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:760px;margin:auto;padding:16px}.hero{background:linear-gradient(135deg,var(--navy),var(--blue));color:white;border-radius:22px;padding:20px;box-shadow:0 8px 28px #1234}
+.hero h1{margin:0 0 5px;font-size:25px}.hero p{margin:0;opacity:.9}.card{background:white;margin-top:14px;padding:16px;border-radius:20px;box-shadow:0 8px 28px #1231}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}label{display:block;font-weight:750;font-size:13px;margin-bottom:5px}
+input,select,button{width:100%;min-height:48px;border-radius:12px;border:1px solid #ccd7e2;padding:10px;font-size:16px}
+button{border:0;background:var(--navy);color:white;font-weight:800;cursor:pointer}.secondary{background:#eaf1f7;color:var(--navy)}
+video{width:100%;border-radius:18px;background:#111;max-height:55vh;object-fit:cover}.camera{position:relative;margin-top:12px}
+.guide{position:absolute;inset:16% 14%;border:4px solid #fff;border-radius:22px;box-shadow:0 0 0 9999px #0004;pointer-events:none}
+.msg{margin-top:12px;padding:12px;border-radius:12px;background:#edf3f8;font-weight:700}.small{font-size:12px;color:#647586;margin-top:8px}
+.overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;z-index:50;background:#0a1724e8;color:white;text-align:center}
+.overlay.show{display:flex}.result{width:min(520px,100%);border-radius:26px;padding:28px 20px;background:var(--green);box-shadow:0 16px 60px #0007}
+.result.dup{background:var(--amber)}.result.err{background:var(--red)}.result h2{font-size:38px;margin:0 0 12px}.result .name{font-size:24px;font-weight:850}.result p{font-size:17px}
+.result button{margin-top:18px;background:white;color:#17324c}
+@media(max-width:620px){.grid{grid-template-columns:1fr}.wrap{padding:10px}.hero{border-radius:18px}.hero h1{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero"><h1>📷 Asistencia QR Pro</h1><p>Escáner compatible con iPhone, iPad y Android.</p></div>
+  <div class="card">
+    <div class="grid">
+      <div><label>PIN de acceso</label><input id="pin" inputmode="numeric" autocomplete="off" placeholder="Escribe tu PIN"></div>
+      <div><label>Grupo / clase</label><select id="clase"><option value="">Primero carga las opciones</option></select></div>
+    </div>
+    <div class="grid" style="margin-top:10px">
+      <button id="cargar">Cargar grupos / clases</button>
+      <button id="cam" class="secondary">Activar cámara</button>
+    </div>
+    <div id="info" class="msg">Ingresa el PIN y carga los grupos o clases.</div>
+    <div class="camera">
+      <video id="video" playsinline muted></video>
+      <div class="guide"></div>
+    </div>
+    <canvas id="canvas" hidden></canvas>
+    <div class="small">Si la cámara no puede leer el código, puedes escribir el ID permanente del alumno:</div>
+    <div class="grid" style="margin-top:8px">
+      <input id="manual" autocomplete="off" placeholder="Ej. ALU-0001">
+      <button id="registrarManual">Registrar por ID</button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" class="overlay"><div id="result" class="result"><h2 id="estado"></h2><div id="nombre" class="name"></div><p id="detalle"></p><button id="cerrar">Continuar escaneando</button></div></div>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbwKzOr-7K1fJOKCUnhJ-vBUgFSbbnns5AJnZoXogZPBxFDOXYZYqK4SwJvfI30fBXhWig/exec";
+let stream=null, scanning=false, busy=false, lastCode="", lastAt=0;
+const $=id=>document.getElementById(id);
+function jsonp(params){
+  return new Promise((resolve,reject)=>{
+    const cb="cb_"+Date.now()+"_"+Math.random().toString(36).slice(2);
+    const s=document.createElement("script");
+    const timer=setTimeout(()=>{cleanup();reject(new Error("Tiempo de espera agotado."))},15000);
+    function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}
+    window[cb]=data=>{cleanup();resolve(data)};
+    params.callback=cb; params.api="1";
+    s.src=API+"?"+new URLSearchParams(params).toString();
+    s.onerror=()=>{cleanup();reject(new Error("No se pudo conectar con el servidor."))};
+    document.body.appendChild(s);
+  });
+}
+async function cargarClases(){
+  const pin=$("pin").value.trim(); if(!pin){$("info").textContent="Escribe el PIN.";return}
+  $("info").textContent="Cargando...";
+  try{
+    const r=await jsonp({accion:"clases",pin});
+    if(!r.ok) throw new Error(r.mensaje||"No autorizado");
+    const sel=$("clase"); sel.innerHTML='<option value="">Selecciona…</option>';
+    (r.clases||[]).filter(c=>String(c.estatus||"ACTIVA").toUpperCase()!=="INACTIVA").forEach(c=>{
+      const o=document.createElement("option");o.value=c.idClase;
+      o.textContent=(String(c.asignatura||"").toUpperCase()==="JORNADA") ? `${c.grupo} · JORNADA` : `${c.grupo} · ${c.asignatura}`;
+      sel.appendChild(o);
+    });
+    $("info").textContent=(r.clases||[]).length ? "Selecciona el grupo/clase y activa la cámara." : "No hay grupos o clases disponibles.";
+  }catch(e){$("info").textContent=e.message}
+}
+async function activarCamara(){
+  if(!$("clase").value){$("info").textContent="Selecciona primero el grupo o clase.";return}
+  try{
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
+    $("video").srcObject=stream; await $("video").play(); scanning=true; $("info").textContent="Cámara activa. Coloca el QR dentro del recuadro."; requestAnimationFrame(scan);
+  }catch(e){$("info").textContent="No se pudo abrir la cámara. Revisa el permiso de cámara del navegador."}
+}
+function scan(){
+  if(!scanning) return;
+  const v=$("video"),c=$("canvas");
+  if(v.readyState===v.HAVE_ENOUGH_DATA && !busy){
+    c.width=v.videoWidth;c.height=v.videoHeight;
+    const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(v,0,0,c.width,c.height);
+    const img=x.getImageData(0,0,c.width,c.height);
+    const q=jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
+    if(q && q.data){
+      const now=Date.now();
+      if(q.data!==lastCode || now-lastAt>2500){lastCode=q.data;lastAt=now;registrar(q.data)}
+    }
+  }
+  requestAnimationFrame(scan);
+}
+async function registrar(qr){
+  const pin=$("pin").value.trim(),idClase=$("clase").value;
+  if(!pin||!idClase||busy)return; busy=true;
+  $("info").textContent="Registrando...";
+  try{
+    const r=await jsonp({accion:"registrar",pin,qr:qr.trim(),idClase,tipo:"PRESENTE"});
+    mostrar(r);
+  }catch(e){mostrar({ok:false,mensaje:e.message})}
+  finally{setTimeout(()=>busy=false,900)}
+}
+function mostrar(r){
+  const box=$("result");box.className="result "+(r.duplicado?"dup":(!r.ok?"err":""));
+  $("estado").textContent=r.duplicado?"YA REGISTRADO":(r.ok?"PRESENTE":"NO REGISTRADO");
+  $("nombre").textContent=(r.alumno&&r.alumno.nombre)||"";
+  let det=r.mensaje||"";
+  if(r.clase) det += `\n${r.clase.grupo} · ${r.clase.asignatura}`;
+  $("detalle").textContent=det;
+  $("overlay").classList.add("show");
+}
+$("cargar").onclick=cargarClases;$("cam").onclick=activarCamara;
+$("registrarManual").onclick=()=>{const v=$("manual").value.trim();if(v)registrar(v);else $("info").textContent="Escribe el ID del alumno."};
+$("cerrar").onclick=()=>{$("overlay").classList.remove("show");$("manual").value="";$("info").textContent="Listo para el siguiente alumno."};
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&stream){stream.getTracks().forEach(t=>t.stop());stream=null;scanning=false}});
+</script>
+</body></html>
