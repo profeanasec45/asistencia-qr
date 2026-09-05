@@ -1,161 +1,18 @@
 <!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0d3558">
-<title>Asistencia QR Pro · Escáner</title>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#d98e9b"><title>Escáner QR Pro</title>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<style>
-:root{--navy:#0d3558;--blue:#174b75;--bg:#f4f7fb;--green:#138a4b;--amber:#c77b00;--red:#c53b3b;--text:#142638}
-*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
-.wrap{max-width:760px;margin:auto;padding:16px}.hero{background:linear-gradient(135deg,var(--navy),var(--blue));color:white;border-radius:22px;padding:20px;box-shadow:0 8px 28px #1234}
-.hero h1{margin:0 0 5px;font-size:25px}.hero p{margin:0;opacity:.9}.card{background:white;margin-top:14px;padding:16px;border-radius:20px;box-shadow:0 8px 28px #1231}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}label{display:block;font-weight:750;font-size:13px;margin-bottom:5px}
-input,select,button{width:100%;min-height:48px;border-radius:12px;border:1px solid #ccd7e2;padding:10px;font-size:16px}
-button{border:0;background:var(--navy);color:white;font-weight:800;cursor:pointer}.secondary{background:#eaf1f7;color:var(--navy)}
-video{width:100%;border-radius:18px;background:#111;max-height:55vh;object-fit:cover}.camera{position:relative;margin-top:12px}
-.guide{position:absolute;inset:16% 14%;border:4px solid #fff;border-radius:22px;box-shadow:0 0 0 9999px #0004;pointer-events:none}
-.msg{margin-top:12px;padding:12px;border-radius:12px;background:#edf3f8;font-weight:700}.small{font-size:12px;color:#647586;margin-top:8px}
-.overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;z-index:50;background:#0a1724e8;color:white;text-align:center}
-.overlay.show{display:flex}.result{width:min(520px,100%);border-radius:26px;padding:28px 20px;background:var(--green);box-shadow:0 16px 60px #0007}
-.result.dup{background:var(--amber)}.result.err{background:var(--red)}.result h2{font-size:38px;margin:0 0 12px}.result .name{font-size:24px;font-weight:850}.result p{font-size:17px}
-.result button{margin-top:18px;background:white;color:#17324c}
-@media(max-width:620px){.grid{grid-template-columns:1fr}.wrap{padding:10px}.hero{border-radius:18px}.hero h1{font-size:22px}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="hero"><h1>📷 Asistencia QR Pro</h1><p>Escáner compatible con iPhone, iPad y Android.</p></div>
-  <div class="card">
-    <div class="grid">
-      <div><label>PIN de acceso</label><input id="pin" inputmode="numeric" autocomplete="off" placeholder="Escribe tu PIN"></div>
-      <div><label>Grupo / clase</label><select id="clase"><option value="">Primero carga las opciones</option></select></div>
-    </div>
-    <div class="grid" style="margin-top:10px">
-      <button id="cargar">Cargar grupos / clases</button>
-      <button id="cam" class="secondary">Activar cámara</button>
-    </div>
-    <div id="info" class="msg">Ingresa el PIN y carga los grupos o clases.</div>
-    <div class="camera">
-      <video id="video" playsinline muted></video>
-      <div class="guide"></div>
-    </div>
-    <canvas id="canvas" hidden></canvas>
-    <div class="small">Si la cámara no puede leer el código, puedes escribir el ID permanente del alumno:</div>
-    <div class="grid" style="margin-top:8px">
-      <input id="manual" autocomplete="off" placeholder="Ej. ALU-0001">
-      <button id="registrarManual">Registrar por ID</button>
-    </div>
-  </div>
-</div>
-
-<div id="overlay" class="overlay"><div id="result" class="result"><h2 id="estado"></h2><div id="nombre" class="name"></div><p id="detalle"></p><button id="cerrar">Continuar escaneando</button></div></div>
-
+<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#fff7f8;color:#2c2728}.wrap{max-width:760px;margin:auto;padding:22px}.brand{text-align:center;margin:8px 0 20px}.brand b{letter-spacing:2px;color:#c66f82}.card{background:#fff;border:1px solid #efd8dd;border-radius:22px;padding:18px;box-shadow:0 14px 35px #9d64721f}.viewer{position:relative;border-radius:18px;overflow:hidden;background:#171717;aspect-ratio:4/3}video{width:100%;height:100%;object-fit:cover}.frame{position:absolute;inset:18%;border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 999px #0004}.row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}button,input{font:inherit;border-radius:12px;padding:13px 15px}button{border:0;background:#d47e90;color:white;font-weight:700;cursor:pointer}button.alt{background:#eee;color:#333}input{border:1px solid #e4cbd1;flex:1;min-width:220px}.result{margin-top:16px;padding:20px;border-radius:18px;text-align:center;background:#fafafa;min-height:110px;display:grid;place-items:center}.ok{background:#edf9f0;border:1px solid #bfe2c7}.err{background:#fff0f1;border:1px solid #efc1c6}.name{font-family:Georgia,serif;font-size:24px;font-weight:700}.info{margin-top:7px;font-size:14px;line-height:1.5}.status{font-size:13px;margin:12px 0;text-align:center;color:#6c6063}canvas{display:none}</style></head>
+<body><div class="wrap"><div class="brand"><b>♡ ASISTENCIA QR PRO</b><h1>Escáner QR</h1></div><div class="card"><div class="viewer"><video id="video" playsinline muted></video><div class="frame"></div></div><canvas id="canvas"></canvas><div id="status" class="status">Preparando cámara…</div><div class="row"><button id="start">Activar cámara</button><button id="stop" class="alt">Detener</button></div><div class="row"><input id="manual" placeholder="Lectura manual / lector USB"><button id="register">Registrar</button></div><div id="result" class="result"><div><div class="name">Listo para escanear</div><div class="info">Apunta la cámara al QR del alumno.</div></div></div></div></div>
 <script>
-const API = "https://script.google.com/macros/s/AKfycbwKzOr-7K1fJOKCUnhJ-vBUgFSbbnns5AJnZoXogZPBxFDOXYZYqK4SwJvfI30fBXhWig/exec";
-let stream=null, scanning=false, busy=false, lastCode="", lastAt=0;
-const $=id=>document.getElementById(id);
-function jsonp(params){
-  return new Promise((resolve,reject)=>{
-    const cb="cb_"+Date.now()+"_"+Math.random().toString(36).slice(2);
-    const s=document.createElement("script");
-    const timer=setTimeout(()=>{cleanup();reject(new Error("Tiempo de espera agotado."))},15000);
-    function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}
-    window[cb]=data=>{cleanup();resolve(data)};
-    params.callback=cb; params.api="1";
-    s.src=API+"?"+new URLSearchParams(params).toString();
-    s.onerror=()=>{cleanup();reject(new Error("No se pudo conectar con el servidor."))};
-    document.body.appendChild(s);
-  });
-}
-async function cargarClases(){
-  const pin=$("pin").value.trim(); if(!pin){$("info").textContent="Escribe el PIN.";return}
-  $("info").textContent="Cargando...";
-  try{
-    const r=await jsonp({accion:"clases",pin});
-    if(!r.ok) throw new Error(r.mensaje||"No autorizado");
-    const sel=$("clase"); sel.innerHTML='<option value="">Selecciona…</option>';
-    (r.clases||[]).filter(c=>String(c.estatus||"ACTIVA").toUpperCase()!=="INACTIVA").forEach(c=>{
-      const o=document.createElement("option");o.value=c.idClase;
-      o.textContent=(String(c.asignatura||"").toUpperCase()==="JORNADA") ? `${c.grupo} · JORNADA` : `${c.grupo} · ${c.asignatura}`;
-      sel.appendChild(o);
-    });
-    $("info").textContent=(r.clases||[]).length ? "Selecciona el grupo/clase y activa la cámara." : "No hay grupos o clases disponibles.";
-  }catch(e){$("info").textContent=e.message}
-}
-function detenerCamara(mensaje=true){
-  scanning=false;
-  if(stream){
-    stream.getTracks().forEach(t=>t.stop());
-    stream=null;
-  }
-  const v=$("video");
-  try{v.pause()}catch(e){}
-  v.srcObject=null;
-  $("cam").textContent="Activar cámara";
-  $("cam").classList.add("secondary");
-  if(mensaje) $("info").textContent="Cámara detenida. Puedes volver a activarla cuando quieras.";
-}
-async function activarCamara(){
-  if(stream){
-    detenerCamara(true);
-    return;
-  }
-  if(!$("clase").value){$("info").textContent="Selecciona primero el grupo o clase.";return}
-  try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
-    $("video").srcObject=stream;
-    await $("video").play();
-    scanning=true;
-    $("cam").textContent="Detener cámara";
-    $("cam").classList.remove("secondary");
-    $("info").textContent="Cámara activa. Coloca el QR dentro del recuadro.";
-    requestAnimationFrame(scan);
-  }catch(e){
-    stream=null;
-    scanning=false;
-    $("cam").textContent="Activar cámara";
-    $("info").textContent="No se pudo abrir la cámara. Revisa el permiso de cámara del navegador.";
-  }
-}
-function scan(){
-  if(!scanning) return;
-  const v=$("video"),c=$("canvas");
-  if(v.readyState===v.HAVE_ENOUGH_DATA && !busy){
-    c.width=v.videoWidth;c.height=v.videoHeight;
-    const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(v,0,0,c.width,c.height);
-    const img=x.getImageData(0,0,c.width,c.height);
-    const q=jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
-    if(q && q.data){
-      const now=Date.now();
-      if(q.data!==lastCode || now-lastAt>2500){lastCode=q.data;lastAt=now;registrar(q.data)}
-    }
-  }
-  requestAnimationFrame(scan);
-}
-async function registrar(qr){
-  const pin=$("pin").value.trim(),idClase=$("clase").value;
-  if(!pin||!idClase||busy)return; busy=true;
-  $("info").textContent="Registrando...";
-  try{
-    const r=await jsonp({accion:"registrar",pin,qr:qr.trim(),idClase,tipo:"PRESENTE"});
-    mostrar(r);
-  }catch(e){mostrar({ok:false,mensaje:e.message})}
-  finally{setTimeout(()=>busy=false,900)}
-}
-function mostrar(r){
-  const box=$("result");box.className="result "+(r.duplicado?"dup":(!r.ok?"err":""));
-  $("estado").textContent=r.duplicado?"YA REGISTRADO":(r.ok?"PRESENTE":"NO REGISTRADO");
-  $("nombre").textContent=(r.alumno&&r.alumno.nombre)||"";
-  let det=r.mensaje||"";
-  if(r.clase) det += `\n${r.clase.grupo} · ${r.clase.asignatura}`;
-  $("detalle").textContent=det;
-  $("overlay").classList.add("show");
-}
-$("cargar").onclick=cargarClases;$("cam").onclick=activarCamara;
-$("registrarManual").onclick=()=>{const v=$("manual").value.trim();if(v)registrar(v);else $("info").textContent="Escribe el ID del alumno."};
-$("cerrar").onclick=()=>{$("overlay").classList.remove("show");$("manual").value="";$("info").textContent="Listo para el siguiente alumno."};
-document.addEventListener("visibilitychange",()=>{if(document.hidden&&stream)detenerCamara(false)});
-</script>
-</body></html>
+const q=new URLSearchParams(location.search), TOKEN=q.get('token')||'', API=q.get('api')||'';
+const video=document.getElementById('video'),canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true}),statusEl=document.getElementById('status'),result=document.getElementById('result');let stream=null,scanning=false,raf=null,busy=false,last='',lastAt=0;
+function jsonp(params){return new Promise((resolve,reject)=>{const cb='cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);const s=document.createElement('script');const timer=setTimeout(()=>{cleanup();reject(new Error('Tiempo de espera agotado.'))},15000);function cleanup(){clearTimeout(timer);delete window[cb];s.remove()}window[cb]=d=>{cleanup();resolve(d)};params.api='scanner';params.token=TOKEN;params.callback=cb;s.src=API+'?'+new URLSearchParams(params).toString();s.onerror=()=>{cleanup();reject(new Error('No se pudo conectar con Asistencia QR Pro.'))};document.body.appendChild(s)})}
+async function start(){if(!TOKEN||!API){show({ok:false,mensaje:'Abre el escáner desde Asistencia QR Pro.'});return}if(typeof jsQR==='undefined'){show({ok:false,mensaje:'No se cargó el lector QR.'});return}try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();scanning=true;statusEl.textContent='Cámara activa · buscando QR…';loop()}catch(e){show({ok:false,mensaje:'No se pudo abrir la cámara: '+(e.message||e)});statusEl.textContent='Cámara no disponible.'}}
+function stop(){scanning=false;if(raf)cancelAnimationFrame(raf);raf=null;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null;statusEl.textContent='Cámara detenida.'}
+function loop(){if(!scanning)return;if(video.readyState>=2&&video.videoWidth){canvas.width=video.videoWidth;canvas.height=video.videoHeight;ctx.drawImage(video,0,0);const im=ctx.getImageData(0,0,canvas.width,canvas.height);const c=jsQR(im.data,canvas.width,canvas.height,{inversionAttempts:'attemptBoth'});if(c&&c.data)detected(String(c.data).trim())}raf=requestAnimationFrame(loop)}
+function detected(v){const now=Date.now();if(busy||!v||(v===last&&now-lastAt<4000))return;last=v;lastAt=now;register(v)}
+async function register(v){if(busy)return;busy=true;statusEl.textContent='QR detectado · registrando…';try{const r=await jsonp({accion:'registrar',qr:v,tipo:'PRESENTE'});show(r);statusEl.textContent=r&&r.ok?'Registro completado.':'Listo para continuar.'}catch(e){show({ok:false,mensaje:e.message})}finally{setTimeout(()=>busy=false,1800)}}
+function show(r){if(r&&r.ok){const a=r.alumno||{};result.className='result ok';result.innerHTML='<div><div style="font-size:42px">✓</div><div class="name">'+esc(a.nombre||'Asistencia registrada')+'</div><div class="info">Grupo '+esc(a.grupo||'')+' · Núm. '+esc(a.numLista||'')+'<br><b>'+esc(r.estatus||'PRESENTE')+'</b> · '+esc(r.hora||'')+'</div></div>'}else{result.className='result err';result.innerHTML='<div><div style="font-size:38px">!</div><div class="name">No registrado</div><div class="info">'+esc((r&&r.mensaje)||'No fue posible registrar.')+'</div></div>'}}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+document.getElementById('start').onclick=start;document.getElementById('stop').onclick=stop;document.getElementById('register').onclick=()=>{const v=document.getElementById('manual').value.trim();if(v)register(v)};document.getElementById('manual').onkeydown=e=>{if(e.key==='Enter')document.getElementById('register').click()};window.addEventListener('pagehide',stop);jsonp({accion:'ping'}).then(()=>statusEl.textContent='Conectado · pulsa Activar cámara.').catch(()=>statusEl.textContent='Pulsa Activar cámara.');
+</script></body></html>
