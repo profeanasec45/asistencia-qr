@@ -55,6 +55,7 @@ button{border:0;border-radius:13px;padding:12px;font-weight:900;font-size:13px}
     <div class="frame"></div><div class="line"></div><div class="status" id="camStatus">CÁMARA DETENIDA</div>
   </div>
   <div class="actions"><button class="primary" id="start">ABRIR CÁMARA QR</button><button class="stop" id="stop" disabled>DETENER</button></div>
+  <div style="margin-top:10px"><button id="backPanel" style="width:100%;border:1px solid #d8ccef;background:#fff;color:#6f4cc3;border-radius:14px;padding:13px;font-weight:900;font-size:14px;cursor:pointer">← REGRESAR AL PANEL</button></div>
   <div class="result read" id="result"><div class="state" id="state">LISTO PARA ESCANEAR</div><div class="name" id="name">Acerca el QR del alumno</div><div class="meta" id="meta">Nombre completo al instante · pasa al siguiente sin esperar.</div></div>
 </div>
 
@@ -76,9 +77,12 @@ button{border:0;border-radius:13px;padding:12px;font-weight:900;font-size:13px}
 
 <script>
 const API='https://script.google.com/macros/s/AKfycbzmerc3GdNROcQxEVW0BBS-lCLdvZ0M8VHf_HybaaTBgGvvq6g29w3FamFeJxnG-JY4/exec';
+const PANEL_URL=API;
 const LABEL={VIA_LACTEA_1:'Vía Láctea 1',VIA_LACTEA_2:'Vía Láctea 2',VIA_LACTEA_3:'Vía Láctea 3',ORION_1:'Orión 1',ORION_2:'Orión 2'};
 const $=id=>document.getElementById(id);
-let point=localStorage.getItem('sec135_point')||'',temp=point||'VIA_LACTEA_1';
+const pointFromPanel=new URLSearchParams(location.search).get('point');
+if(pointFromPanel && LABEL[pointFromPanel]) localStorage.setItem('sec135_point',pointFromPanel);
+let point=(pointFromPanel && LABEL[pointFromPanel]) ? pointFromPanel : (localStorage.getItem('sec135_point')||''),temp=point||'VIA_LACTEA_1';
 let stream=null,scanning=false,raf=null,lastRead='',lastAt=0,armed=true,noQrFrames=0;
 let roster=new Map(),queue=[],working=false;
 const queued=new Map();
@@ -104,6 +108,7 @@ async function summary(){
 function openDoor(){temp=point||'VIA_LACTEA_1';paintDoor();$('modal').classList.add('show')}
 function paintDoor(){document.querySelectorAll('#doors button').forEach(b=>b.classList.toggle('sel',b.dataset.id===temp))}
 document.querySelectorAll('#doors button').forEach(b=>b.onclick=()=>{temp=b.dataset.id;paintDoor()});
+$('backPanel').onclick=()=>{stop();window.location.href=PANEL_URL;};
 $('doorBtn').onclick=openDoor;$('saveDoor').onclick=()=>{point=temp;localStorage.setItem('sec135_point',point);$('doorBtn').textContent=LABEL[point];$('modal').classList.remove('show')};
 if(point)$('doorBtn').textContent=LABEL[point];else openDoor();
 
