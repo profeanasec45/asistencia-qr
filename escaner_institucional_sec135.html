@@ -79,7 +79,7 @@ const API='https://script.google.com/macros/s/AKfycbzmerc3GdNROcQxEVW0BBS-lCLdvZ
 const LABEL={VIA_LACTEA_1:'Vía Láctea 1',VIA_LACTEA_2:'Vía Láctea 2',VIA_LACTEA_3:'Vía Láctea 3',ORION_1:'Orión 1',ORION_2:'Orión 2'};
 const $=id=>document.getElementById(id);
 let point=localStorage.getItem('sec135_point')||'',temp=point||'VIA_LACTEA_1';
-let stream=null,scanning=false,raf=null,lastRead='',lastAt=0;
+let stream=null,scanning=false,raf=null,lastRead='',lastAt=0,armed=true,noQrFrames=0;
 let roster=new Map(),queue=[],working=false;
 const queued=new Map();
 
@@ -121,12 +121,20 @@ function loop(){
  if(v.readyState>=2&&v.videoWidth){
   const c=$('canvas'),ctx=c.getContext('2d',{willReadFrequently:true}),w=640,scale=Math.min(1,w/v.videoWidth);
   c.width=Math.max(320,Math.round(v.videoWidth*scale));c.height=Math.max(240,Math.round(v.videoHeight*scale));ctx.drawImage(v,0,0,c.width,c.height);
-  const im=ctx.getImageData(0,0,c.width,c.height),q=jsQR(im.data,c.width,c.height,{inversionAttempts:'dontInvert'});if(q?.data)detect(q.data);
+  const im=ctx.getImageData(0,0,c.width,c.height),q=jsQR(im.data,c.width,c.height,{inversionAttempts:'dontInvert'});
+  if(q?.data){
+    noQrFrames=0;
+    if(armed) detect(q.data);
+  }else{
+    noQrFrames++;
+    // Rearma únicamente cuando el QR ya salió de la cámara.
+    if(noQrFrames>=8){ armed=true; lastRead=''; }
+  }
  }raf=requestAnimationFrame(loop)
 }
 function detect(raw){
- const qr=String(raw||'').trim().toUpperCase(),now=Date.now();if(!qr||(qr===lastRead&&now-lastAt<5000)||queued.has(qr))return;
- lastRead=qr;lastAt=now;const a=roster.get(qr);
+ const qr=String(raw||'').trim().toUpperCase(),now=Date.now();if(!qr||!armed||queued.has(qr))return;
+ armed=false; noQrFrames=0; lastRead=qr;lastAt=now;const a=roster.get(qr);
  const item={id:'i'+now+Math.random().toString(16).slice(2),qr,a};queued.set(qr,true);
  if(a)show('read','QR LEÍDO · REGISTRANDO',a.nombre,`${a.grado}°${a.grupo} · No. ${a.numLista} · Matrícula ${pad(a.matricula)}`);
  else show('read','QR LEÍDO · VERIFICANDO','Consultando alumno...',qr);
