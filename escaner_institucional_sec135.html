@@ -108,7 +108,7 @@ async function summary(){
 function openDoor(){temp=point||'VIA_LACTEA_1';paintDoor();$('modal').classList.add('show')}
 function paintDoor(){document.querySelectorAll('#doors button').forEach(b=>b.classList.toggle('sel',b.dataset.id===temp))}
 document.querySelectorAll('#doors button').forEach(b=>b.onclick=()=>{temp=b.dataset.id;paintDoor()});
-$('backPanel').onclick=()=>{stop();window.location.href=PANEL_URL;};
+$('backPanel').onclick=()=>{stop(); window.close(); setTimeout(()=>{window.location.href=PANEL_URL;},250);};
 $('doorBtn').onclick=openDoor;$('saveDoor').onclick=()=>{point=temp;localStorage.setItem('sec135_point',point);$('doorBtn').textContent=LABEL[point];$('modal').classList.remove('show')};
 if(point)$('doorBtn').textContent=LABEL[point];else openDoor();
 
