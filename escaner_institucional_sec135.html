@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#6A4FB3">
+<title>Escáner · Asistencia QR Pro Institucional</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+:root{
+  --p:#6A4FB3;--p2:#9777DF;--pink:#EA6BB1;--cyan:#58C9D7;
+  --ink:#282332;--muted:#716A7B;--line:#E7E0F0;
+  --green:#16875A;--greenbg:#E9F9F1;--red:#B53F49;--redbg:#FFF0F2;
+  --amber:#A56A00;--gold:#F4CA5F;--blue:#356CB7;
+}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);
+background:radial-gradient(circle at 10% 0,rgba(234,107,177,.18),transparent 28%),radial-gradient(circle at 95% 5%,rgba(88,201,215,.19),transparent 25%),#F9F8FC}
+.wrap{max-width:700px;margin:auto;padding:12px 12px 40px}
+header{display:flex;align-items:center;gap:10px;padding:8px 2px 12px}
+.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--p),var(--pink));color:white;display:grid;place-items:center;font-size:22px;font-weight:900}
+h1{font-size:17px;margin:0}.school{font-size:11px;color:var(--muted);margin-top:3px}
+.door{margin-left:auto;border:1px solid var(--line);background:#fff;padding:8px 10px;border-radius:999px;font-size:11px;font-weight:900;color:var(--p)}
+.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:13px;box-shadow:0 10px 30px rgba(50,39,86,.09);margin-bottom:12px}
+.viewer{position:relative;background:#0C0C0F;border-radius:17px;overflow:hidden;aspect-ratio:3/4;max-height:62vh}
+video{width:100%;height:100%;object-fit:cover;display:block}
+canvas{display:none}.frame{position:absolute;inset:18% 10%;border:3px solid white;border-radius:22px;box-shadow:0 0 0 9999px rgba(0,0,0,.16)}
+.line{position:absolute;left:13%;right:13%;top:50%;height:2px;background:white;box-shadow:0 0 9px white}
+.status{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.65);color:white;border-radius:999px;padding:7px 9px;font-size:10px;font-weight:900}
+.actions{display:grid;grid-template-columns:1fr .45fr;gap:8px;margin-top:10px}
+button{border:0;border-radius:13px;padding:12px;font-weight:900;font-size:13px}
+.primary{background:linear-gradient(135deg,var(--p),var(--pink));color:white}.stop{background:#F2EFF7;color:var(--p)}
+.result{margin-top:10px;border:1px solid var(--line);border-radius:17px;padding:14px;background:#F1F5FB}
+.result .state{font-size:18px;font-weight:950}.result .name{font-size:21px;font-weight:950;line-height:1.1;margin-top:5px}.result .meta{font-size:12px;color:var(--muted);margin-top:6px}
+.result.ok{background:var(--greenbg);border-color:#BDE7D4}.result.ok .state{color:var(--green)}
+.result.late{background:#FFF4DE;border-color:#F0D59C}.result.late .state{color:var(--amber)}
+.result.vip{background:linear-gradient(135deg,#FFF7CE,#FFF0FA 50%,#EDF8FF);border:2px solid var(--gold)}.result.vip .state{color:#8C5B00}
+.result.err{background:var(--redbg);border-color:#EEC1C7}.result.err .state{color:var(--red)}
+.result.read{background:#EEF4FF;border-color:#CADAF5}.result.read .state{color:var(--blue)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.stat{text-align:center;border:1px solid var(--line);border-radius:13px;padding:8px 3px}.stat b{display:block;font-size:18px}.stat span{font-size:8px;color:var(--muted);font-weight:900}
+.tiny{font-size:10px;color:var(--muted);margin-top:7px;font-weight:700}
+.history{display:flex;flex-direction:column;gap:7px}.item{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:7px 2px}.item:last-child{border:0}.item b{font-size:12px}.item small{display:block;color:var(--muted);margin-top:2px}.pill{font-size:9px;font-weight:950;white-space:nowrap;padding:5px 7px;border-radius:999px;background:#F2EEF9;color:var(--p);height:max-content}
+.modal{position:fixed;inset:0;background:rgba(31,25,44,.54);z-index:20;display:none;align-items:center;justify-content:center;padding:16px}.modal.show{display:flex}.modalbox{width:min(430px,100%);background:#fff;border-radius:22px;padding:18px}.modalbox h2{margin:0 0 5px;font-size:20px}.modalbox p{margin:0 0 12px;color:var(--muted);font-size:12px}
+.doors{display:grid;gap:7px}.doors button{background:#F6F1FE;color:var(--p);border:1px solid var(--line)}.doors button.sel{background:linear-gradient(135deg,var(--p),var(--pink));color:#fff}
+.save{width:100%;margin-top:10px;background:var(--p);color:white}
+@media(min-width:650px){.viewer{aspect-ratio:4/3}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><div class="logo">✓</div><div><h1>ASISTENCIA QR PRO · INSTITUCIONAL</h1><div class="school">SEC. #135 · Escáner de entrada</div></div><button class="door" id="doorBtn">CONFIGURAR</button></header>
+
+<div class="card">
+  <div class="viewer">
+    <video id="video" playsinline muted></video><canvas id="canvas"></canvas>
+    <div class="frame"></div><div class="line"></div><div class="status" id="camStatus">CÁMARA DETENIDA</div>
+  </div>
+  <div class="actions"><button class="primary" id="start">ABRIR CÁMARA QR</button><button class="stop" id="stop" disabled>DETENER</button></div>
+  <div class="result read" id="result"><div class="state" id="state">LISTO PARA ESCANEAR</div><div class="name" id="name">Acerca el QR del alumno</div><div class="meta" id="meta">Nombre completo al instante · pasa al siguiente sin esperar.</div></div>
+</div>
+
+<div class="card"><div class="stats">
+<div class="stat"><b id="a">—</b><span>ACTIVOS</span></div><div class="stat"><b id="p">—</b><span>PRESENTES</span></div>
+<div class="stat"><b id="r">—</b><span>RETARDOS</span></div><div class="stat"><b id="f">—</b><span>PENDIENTES</span></div>
+</div><div class="tiny" id="queue">Cargando padrón...</div></div>
+
+<div class="card"><b style="font-size:14px">Últimos escaneos</b><div class="history" id="history"></div></div>
+</div>
+
+<div class="modal" id="modal"><div class="modalbox">
+<h2>Selecciona el punto de escaneo</h2><p>Se guarda en este celular. Si cambia la persona que escanea, no hay que configurar nada otra vez.</p>
+<div class="doors" id="doors">
+<button data-id="VIA_LACTEA_1">🌌 Vía Láctea 1</button><button data-id="VIA_LACTEA_2">🌌 Vía Láctea 2</button><button data-id="VIA_LACTEA_3">🌌 Vía Láctea 3</button>
+<button data-id="ORION_1">✨ Orión 1</button><button data-id="ORION_2">✨ Orión 2</button>
+</div><button class="save" id="saveDoor">GUARDAR PUNTO</button>
+</div></div>
+
+<script>
+const API='https://script.google.com/macros/s/AKfycbzmerc3GdNROcQxEVW0BBS-lCLdvZ0M8VHf_HybaaTBgGvvq6g29w3FamFeJxnG-JY4/exec';
+const LABEL={VIA_LACTEA_1:'Vía Láctea 1',VIA_LACTEA_2:'Vía Láctea 2',VIA_LACTEA_3:'Vía Láctea 3',ORION_1:'Orión 1',ORION_2:'Orión 2'};
+const $=id=>document.getElementById(id);
+let point=localStorage.getItem('sec135_point')||'',temp=point||'VIA_LACTEA_1';
+let stream=null,scanning=false,raf=null,lastRead='',lastAt=0;
+let roster=new Map(),queue=[],working=false;
+const queued=new Map();
+
+function jsonp(params){
+ return new Promise((resolve,reject)=>{
+  const cb='cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const s=document.createElement('script'); const timer=setTimeout(()=>{clean();reject(new Error('Tiempo de espera agotado'))},12000);
+  function clean(){clearTimeout(timer);delete window[cb];s.remove()}
+  window[cb]=d=>{clean();resolve(d)};
+  params.callback=cb;s.src=API+'?'+new URLSearchParams(params).toString();
+  s.onerror=()=>{clean();reject(new Error('No se pudo conectar con la base institucional'))};
+  document.body.appendChild(s);
+ });
+}
+async function loadRoster(){
+ try{const x=await jsonp({api:'roster'});roster.clear();(x.alumnos||[]).forEach(a=>roster.set(String(a.idQr||'').trim().toUpperCase(),a));$('queue').textContent=`Padrón rápido listo: ${x.total||roster.size} alumnos · Cola 0`}
+ catch(e){$('queue').textContent='No se pudo precargar el padrón.'}
+}
+async function summary(){
+ try{const x=await jsonp({api:'summary'}),s=x.resumen||{};$('a').textContent=s.totalActivos??0;$('p').textContent=s.presentes??0;$('r').textContent=s.retardos??0;$('f').textContent=s.faltas??0}catch(e){}
+}
+function openDoor(){temp=point||'VIA_LACTEA_1';paintDoor();$('modal').classList.add('show')}
+function paintDoor(){document.querySelectorAll('#doors button').forEach(b=>b.classList.toggle('sel',b.dataset.id===temp))}
+document.querySelectorAll('#doors button').forEach(b=>b.onclick=()=>{temp=b.dataset.id;paintDoor()});
+$('doorBtn').onclick=openDoor;$('saveDoor').onclick=()=>{point=temp;localStorage.setItem('sec135_point',point);$('doorBtn').textContent=LABEL[point];$('modal').classList.remove('show')};
+if(point)$('doorBtn').textContent=LABEL[point];else openDoor();
+
+$('start').onclick=async()=>{
+ if(!point){openDoor();return}
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+  $('video').srcObject=stream;await $('video').play();scanning=true;$('start').disabled=true;$('stop').disabled=false;$('camStatus').textContent='CÁMARA ACTIVA · LISTA';loop();
+ }catch(e){show('err','NO SE PUDO ABRIR LA CÁMARA','Revisa el permiso de cámara.',e.message||String(e))}
+};
+$('stop').onclick=stop;
+function stop(){scanning=false;if(raf)cancelAnimationFrame(raf);raf=null;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('video').srcObject=null;$('start').disabled=false;$('stop').disabled=true;$('camStatus').textContent='CÁMARA DETENIDA'}
+function loop(){
+ if(!scanning)return;const v=$('video');
+ if(v.readyState>=2&&v.videoWidth){
+  const c=$('canvas'),ctx=c.getContext('2d',{willReadFrequently:true}),w=640,scale=Math.min(1,w/v.videoWidth);
+  c.width=Math.max(320,Math.round(v.videoWidth*scale));c.height=Math.max(240,Math.round(v.videoHeight*scale));ctx.drawImage(v,0,0,c.width,c.height);
+  const im=ctx.getImageData(0,0,c.width,c.height),q=jsQR(im.data,c.width,c.height,{inversionAttempts:'dontInvert'});if(q?.data)detect(q.data);
+ }raf=requestAnimationFrame(loop)
+}
+function detect(raw){
+ const qr=String(raw||'').trim().toUpperCase(),now=Date.now();if(!qr||(qr===lastRead&&now-lastAt<5000)||queued.has(qr))return;
+ lastRead=qr;lastAt=now;const a=roster.get(qr);
+ const item={id:'i'+now+Math.random().toString(16).slice(2),qr,a};queued.set(qr,true);
+ if(a)show('read','QR LEÍDO · REGISTRANDO',a.nombre,`${a.grado}°${a.grupo} · No. ${a.numLista} · Matrícula ${pad(a.matricula)}`);
+ else show('read','QR LEÍDO · VERIFICANDO','Consultando alumno...',qr);
+ addHistory(item);queue.push(item);qtext();process();
+}
+async function process(){
+ if(working||!queue.length)return;working=true;const i=queue.shift();qtext();
+ try{
+  const x=await jsonp({api:'scan',qr:i.qr,scanner:LABEL[point]||point}),a=x.alumno||i.a||{};
+  updateHistory(i.id,x);
+  if(x.tipo==='REGISTRADO'){
+   const late=x.asistencia?.estatus==='RETARDO';show(late?'late':'ok',late?'RETARDO REGISTRADO':'REGISTRADO ✓',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · ${x.asistencia?.hora||''} · ${LABEL[point]}`);buzz(50);summary();
+  }else if(x.tipo==='YA_REGISTRADO'){
+   show('vip','VIP ✨ · YA REGISTRADO',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · Registro previo ${x.asistencia?.hora||''}`);buzz([40,50,40]);
+  }else show('err',x.mensaje||'NO REGISTRADO',a.nombre||'QR no encontrado',i.qr);
+ }catch(e){show('err','ERROR DE REGISTRO',i.a?.nombre||'No se pudo guardar',e.message)}
+ finally{queued.delete(i.qr);working=false;qtext();if(queue.length)process();else $('camStatus').textContent=scanning?'CÁMARA ACTIVA · LISTA':'CÁMARA DETENIDA'}
+}
+function show(cls,st,n,m){$('result').className='result '+cls;$('state').textContent=st;$('name').textContent=n;$('meta').textContent=m||''}
+function addHistory(i){const d=document.createElement('div');d.id=i.id;d.className='item';d.innerHTML=`<div><b>${esc(i.a?.nombre||i.qr)}</b><small>${i.a?`${i.a.grado}°${i.a.grupo} · No. ${i.a.numLista}`:'Procesando...'}</small></div><span class="pill">PROCESANDO</span>`;$('history').prepend(d);while($('history').children.length>6)$('history').lastElementChild.remove()}
+function updateHistory(id,x){const d=$(id);if(!d)return;const a=x.alumno||{},p=d.querySelector('.pill');if(a.nombre){d.querySelector('b').textContent=a.nombre;d.querySelector('small').textContent=`${a.grado}°${a.grupo} · No. ${a.numLista} · ${x.asistencia?.hora||''}`};p.textContent=x.tipo==='REGISTRADO'?(x.asistencia?.estatus||'REGISTRADO'):x.tipo==='YA_REGISTRADO'?'VIP · YA REGISTRADO':'ERROR'}
+function qtext(){$('queue').textContent=`Padrón rápido: ${roster.size} alumnos · Pendientes de guardar: ${queue.length+(working?1:0)}`}
+function pad(v){return String(v??'').replace(/\D/g,'').padStart(4,'0')}function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}function buzz(x){try{navigator.vibrate?.(x)}catch(e){}}
+loadRoster();summary();
+</script>
+</body></html>
