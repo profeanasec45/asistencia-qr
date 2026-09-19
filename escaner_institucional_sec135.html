@@ -47,7 +47,7 @@ button{border:0;border-radius:13px;padding:12px;font-weight:900;font-size:13px}
 </head>
 <body>
 <div class="wrap">
-<header><div class="logo">✓</div><div><h1>ASISTENCIA QR PRO · INSTITUCIONAL</h1><div class="school">SEC. #135 · Escáner de entrada</div></div><button class="door" id="doorBtn">CONFIGURAR</button></header>
+<header><div class="logo">✓</div><div><h1>ASISTENCIA QR PRO · INSTITUCIONAL</h1><div class="school">SEC. #135 · Escáner de entrada</div></div><button class="door" id="doorBtn">SELECCIONAR PERSONA</button></header>
 
 <div class="card">
   <div class="viewer">
@@ -68,21 +68,21 @@ button{border:0;border-radius:13px;padding:12px;font-weight:900;font-size:13px}
 </div>
 
 <div class="modal" id="modal"><div class="modalbox">
-<h2>Selecciona el punto de escaneo</h2><p>Se guarda en este celular. Si cambia la persona que escanea, no hay que configurar nada otra vez.</p>
-<div class="doors" id="doors">
-<button data-id="VIA_LACTEA_1">🌌 Vía Láctea 1</button><button data-id="VIA_LACTEA_2">🌌 Vía Láctea 2</button><button data-id="VIA_LACTEA_3">🌌 Vía Láctea 3</button>
-<button data-id="ORION_1">✨ Orión 1</button><button data-id="ORION_2">✨ Orión 2</button>
-</div><button class="save" id="saveDoor">GUARDAR PUNTO</button>
+<h2>¿Quién realizará el escaneo?</h2><p>Selecciona tu nombre. Puedes usar cualquiera de los celulares o puertas.</p>
+<div class="doors" id="doors"></div><button class="save" id="saveDoor">CONTINUAR AL ESCÁNER</button>
 </div></div>
 
 <script>
 const API='https://script.google.com/macros/s/AKfycbzmerc3GdNROcQxEVW0BBS-lCLdvZ0M8VHf_HybaaTBgGvvq6g29w3FamFeJxnG-JY4/exec';
 const PANEL_URL=API;
-const LABEL={VIA_LACTEA_1:'Vía Láctea 1',VIA_LACTEA_2:'Vía Láctea 2',VIA_LACTEA_3:'Vía Láctea 3',ORION_1:'Orión 1',ORION_2:'Orión 2'};
 const $=id=>document.getElementById(id);
-const pointFromPanel=new URLSearchParams(location.search).get('point');
-if(pointFromPanel && LABEL[pointFromPanel]) localStorage.setItem('sec135_point',pointFromPanel);
-let point=(pointFromPanel && LABEL[pointFromPanel]) ? pointFromPanel : (localStorage.getItem('sec135_point')||''),temp=point||'VIA_LACTEA_1';
+const DEFAULT_PERSONAL=['JULIO','ERIK','OSIRIS','SERGIO','GUILLERMO'];
+const params=new URLSearchParams(location.search);
+const personFromPanel=(params.get('person')||params.get('point')||'').trim().toUpperCase();
+if(personFromPanel) localStorage.setItem('sec135_scanner_persona',personFromPanel);
+let point=personFromPanel || (localStorage.getItem('sec135_scanner_persona')||'');
+let temp=point||'';
+let personal=DEFAULT_PERSONAL.slice();
 let stream=null,scanning=false,raf=null,lastRead='',lastAt=0,armed=true,noQrFrames=0;
 let roster=new Map(),queue=[],working=false;
 const queued=new Map();
@@ -105,12 +105,25 @@ async function loadRoster(){
 async function summary(){
  try{const x=await jsonp({api:'summary'}),s=x.resumen||{};$('a').textContent=s.totalActivos??0;$('p').textContent=s.presentes??0;$('r').textContent=s.retardos??0;$('f').textContent=s.faltas??0}catch(e){}
 }
-function openDoor(){temp=point||'VIA_LACTEA_1';paintDoor();$('modal').classList.add('show')}
+async function loadPersonal(){
+ try{
+  const x=await jsonp({api:'personal'});
+  if(Array.isArray(x.personal)&&x.personal.length) personal=x.personal.map(p=>String(p.nombre||p).trim().toUpperCase()).filter(Boolean);
+ }catch(e){}
+ if(point && !personal.includes(point)){point='';temp='';localStorage.removeItem('sec135_scanner_persona');}
+ paintPersonal();
+ if(point)$('doorBtn').textContent='👤 '+point;else openDoor();
+}
+function paintPersonal(){
+ const box=$('doors');box.innerHTML='';
+ personal.forEach(n=>{const b=document.createElement('button');b.dataset.id=n;b.textContent='👤 '+n;b.onclick=()=>{temp=n;paintDoor()};box.appendChild(b)});
+ paintDoor();
+}
+function openDoor(){temp=point||'';paintPersonal();$('modal').classList.add('show')}
 function paintDoor(){document.querySelectorAll('#doors button').forEach(b=>b.classList.toggle('sel',b.dataset.id===temp))}
-document.querySelectorAll('#doors button').forEach(b=>b.onclick=()=>{temp=b.dataset.id;paintDoor()});
 $('backPanel').onclick=()=>{stop(); window.close(); setTimeout(()=>{window.location.href=PANEL_URL;},250);};
-$('doorBtn').onclick=openDoor;$('saveDoor').onclick=()=>{point=temp;localStorage.setItem('sec135_point',point);$('doorBtn').textContent=LABEL[point];$('modal').classList.remove('show')};
-if(point)$('doorBtn').textContent=LABEL[point];else openDoor();
+$('doorBtn').onclick=openDoor;
+$('saveDoor').onclick=()=>{if(!temp){alert('Selecciona tu nombre para continuar.');return}point=temp;localStorage.setItem('sec135_scanner_persona',point);$('doorBtn').textContent='👤 '+point;$('modal').classList.remove('show')};
 
 $('start').onclick=async()=>{
  if(!point){openDoor();return}
@@ -148,10 +161,10 @@ function detect(raw){
 async function process(){
  if(working||!queue.length)return;working=true;const i=queue.shift();qtext();
  try{
-  const x=await jsonp({api:'scan',qr:i.qr,scanner:LABEL[point]||point}),a=x.alumno||i.a||{};
+  const x=await jsonp({api:'scan',qr:i.qr,scanner:point}),a=x.alumno||i.a||{};
   updateHistory(i.id,x);
   if(x.tipo==='REGISTRADO'){
-   const late=x.asistencia?.estatus==='RETARDO';show(late?'late':'ok',late?'RETARDO REGISTRADO':'REGISTRADO ✓',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · ${x.asistencia?.hora||''} · ${LABEL[point]}`);buzz(50);summary();
+   const late=x.asistencia?.estatus==='RETARDO';show(late?'late':'ok',late?'RETARDO REGISTRADO':'REGISTRADO ✓',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · ${x.asistencia?.hora||''} · ${point}`);buzz(50);summary();
   }else if(x.tipo==='YA_REGISTRADO'){
    show('vip','VIP ✨ · YA REGISTRADO',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · Registro previo ${x.asistencia?.hora||''}`);buzz([40,50,40]);
   }else show('err',x.mensaje||'NO REGISTRADO',a.nombre||'QR no encontrado',i.qr);
@@ -163,6 +176,6 @@ function addHistory(i){const d=document.createElement('div');d.id=i.id;d.classNa
 function updateHistory(id,x){const d=$(id);if(!d)return;const a=x.alumno||{},p=d.querySelector('.pill');if(a.nombre){d.querySelector('b').textContent=a.nombre;d.querySelector('small').textContent=`${a.grado}°${a.grupo} · No. ${a.numLista} · ${x.asistencia?.hora||''}`};p.textContent=x.tipo==='REGISTRADO'?(x.asistencia?.estatus||'REGISTRADO'):x.tipo==='YA_REGISTRADO'?'VIP · YA REGISTRADO':'ERROR'}
 function qtext(){$('queue').textContent=`Padrón rápido: ${roster.size} alumnos · Pendientes de guardar: ${queue.length+(working?1:0)}`}
 function pad(v){return String(v??'').replace(/\D/g,'').padStart(4,'0')}function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}function buzz(x){try{navigator.vibrate?.(x)}catch(e){}}
-loadRoster();summary();
+loadRoster();summary();loadPersonal();
 </script>
 </body></html>
