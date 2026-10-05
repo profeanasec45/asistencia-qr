@@ -28,7 +28,10 @@ h1{font-size:17px;margin:0}.school{font-size:11px;color:var(--muted);margin-top:
 </head>
 <body>
 <div class="wrap">
-<header><div class="logo">✓</div><div><h1>ASISTENCIA QR PRO · INSTITUCIONAL</h1><div class="school">SEC. #135 · Asistencia por salón</div></div><button class="groupbtn" id="groupBtn">ELEGIR GRUPO</button></header>
+<header><div class="logo">✓</div><div><h1>ASISTENCIA QR PRO · INSTITUCIONAL</h1><div class="school">SEC. #135 · Asistencia por salón</div></div><div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+<button class="groupbtn" id="backPanel" type="button">← REGRESAR AL PANEL</button>
+<button class="groupbtn" id="groupBtn" type="button">ELEGIR GRUPO</button>
+</div></header>
 <div class="card">
  <div class="viewer"><video id="video" playsinline muted></video><canvas id="canvas"></canvas><div class="frame"></div><div class="line"></div><div class="status" id="camStatus">CÁMARA DETENIDA</div></div>
  <div class="actions"><button class="primary" id="start">ABRIR CÁMARA QR</button><button class="stop" id="stop" disabled>DETENER</button></div>
@@ -49,6 +52,7 @@ h1{font-size:17px;margin:0}.school{font-size:11px;color:var(--muted);margin-top:
 
 <script>
 const API='https://script.google.com/macros/s/AKfycbzmerc3GdNROcQxEVW0BBS-lCLdvZ0M8VHf_HybaaTBgGvvq6g29w3FamFeJxnG-JY4/exec';
+const PANEL_URL=API;
 const $=id=>document.getElementById(id);
 let roster=new Map(), all=[], stream=null, scanning=false, raf=null, armed=true, noQrFrames=0, queue=[], working=false;
 let selected=localStorage.getItem('sec135_aula_grupo')||'', registered=new Set(), duplicates=new Set(), audioCtx=null;
@@ -61,6 +65,7 @@ function buildGroups(){const g=$('grade').value||selected.split('°')[0]||'';con
 $('grade').onchange=buildGroups;
 function openGroup(){const parts=selected.split('°');$('grade').value=parts[0]||'';buildGroups();$('grp').value=parts[1]||'';$('modal').classList.add('show')}
 $('groupBtn').onclick=openGroup;
+$('backPanel').onclick=()=>{ stop(); window.location.href=PANEL_URL; };
 $('saveGroup').onclick=()=>{const g=$('grade').value,gr=$('grp').value;if(!g||!gr){alert('Selecciona grado y grupo.');return}selected=`${g}°${gr}`;localStorage.setItem('sec135_aula_grupo',selected);$('groupBtn').textContent='📚 '+selected;$('modal').classList.remove('show');registered.clear();duplicates.clear();refreshStats();show('read','LISTO PARA '+selected,'Abre la cámara y comienza a escanear.','VERDE + BIP = guardado correctamente.')}
 function refreshStats(){const total=selected?all.filter(a=>key(a)===selected).length:0;$('total').textContent=selected?total:'—';$('reg').textContent=registered.size;$('dup').textContent=duplicates.size;$('pending').textContent=selected?Math.max(0,total-registered.size-duplicates.size):'—'}
 function ensureAudio(){try{const A=window.AudioContext||window.webkitAudioContext;if(!audioCtx&&A)audioCtx=new A();if(audioCtx?.state==='suspended')audioCtx.resume()}catch(e){}}
