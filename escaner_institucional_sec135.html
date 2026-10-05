@@ -1,181 +1,1120 @@
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#6A4FB3">
-<title>Escáner · Asistencia QR Pro Institucional</title>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<style>
-:root{
-  --p:#6A4FB3;--p2:#9777DF;--pink:#EA6BB1;--cyan:#58C9D7;
-  --ink:#282332;--muted:#716A7B;--line:#E7E0F0;
-  --green:#16875A;--greenbg:#E9F9F1;--red:#B53F49;--redbg:#FFF0F2;
-  --amber:#A56A00;--gold:#F4CA5F;--blue:#356CB7;
+/**
+ * ASISTENCIA QR PRO · INSTITUCIONAL · SEC. #135
+ * Ciclo escolar 2026-2027
+ *
+ * IMPORTANTE:
+ * - Este archivo trabaja SOLO con la copia institucional.
+ * - La matrícula visible es 0001, 0002, ...
+ * - El contenido del QR es SEC135-0001, SEC135-0002, ...
+ * - Un alumno solo puede registrar una entrada por día.
+ * - Soporta varios escáneres simultáneos mediante LockService.
+ */
+
+const SPREADSHEET_ID = '16FPUHXUmlsxjF3BgrBMSSBNCmIZuOWFlsumxkbpPI_M';
+
+const HOJAS = Object.freeze({
+  ALUMNOS: 'Alumnos',
+  ASISTENCIAS: 'Asistencias',
+  CONFIG: 'Configuracion',
+  CORRECCIONES: 'Correcciones',
+  AUDITORIA: 'Auditoria',
+  PERSONAL_ESCANEO: 'Personal_Escaneo'
+});
+
+const ESCUELA = 'Secundaria No. 135 "Gilberto Bosques Saldívar"';
+const CICLO = '2026-2027';
+const PREFIJO_QR = 'SEC135-';
+const TZ = 'America/Monterrey';
+
+/* =========================================================
+   INSTALACIÓN / ESTRUCTURA
+========================================================= */
+
+function configurarSistemaInstitucional() {
+  const ss = abrirBase_();
+
+  crearORepararHoja_(
+    ss,
+    HOJAS.ALUMNOS,
+    ['MATRICULA','ID_QR','NOMBRE','GRADO','GRUPO','NUM_LISTA','ESTATUS','FECHA_ALTA','FECHA_BAJA','OBSERVACIONES']
+  );
+
+  crearORepararHoja_(
+    ss,
+    HOJAS.ASISTENCIAS,
+    ['FECHA','HORA','MATRICULA','ID_QR','NOMBRE','GRADO','GRUPO','NUM_LISTA','ESTATUS','ESCANER','ORIGEN','TIMESTAMP']
+  );
+
+  crearORepararHoja_(
+    ss,
+    HOJAS.CONFIG,
+    ['CLAVE','VALOR','DESCRIPCION']
+  );
+
+  crearORepararHoja_(
+    ss,
+    HOJAS.CORRECCIONES,
+    ['FECHA_CORRECCION','MATRICULA','NOMBRE','FECHA_ASISTENCIA','ESTATUS_ANTERIOR','ESTATUS_NUEVO','HORA_ANTERIOR','HORA_NUEVA','MOTIVO','USUARIO','TIMESTAMP']
+  );
+
+  crearORepararHoja_(
+    ss,
+    HOJAS.AUDITORIA,
+    ['FECHA_HORA','ACCION','MATRICULA','NOMBRE','DETALLE','USUARIO']
+  );
+
+  crearORepararHoja_(
+    ss,
+    HOJAS.PERSONAL_ESCANEO,
+    ['ID','NOMBRE','ESTATUS','FECHA_ALTA','FECHA_BAJA','OBSERVACIONES']
+  );
+
+  inicializarPersonalEscaneo_();
+
+  establecerConfigSiFalta_('ESCUELA', ESCUELA, 'Nombre de la escuela');
+  establecerConfigSiFalta_('CICLO_ESCOLAR', CICLO, 'Ciclo escolar');
+  establecerConfigSiFalta_('HORA_ENTRADA', '07:00', 'Hora oficial de entrada');
+  establecerConfigSiFalta_('LIMITE_RETARDO', '07:33', 'A partir de esta hora se registra RETARDO');
+  establecerConfigSiFalta_('ESCANERES', '21', 'Cantidad prevista de dispositivos');
+  establecerConfigSiFalta_('PREFIJO_QR', PREFIJO_QR, 'Prefijo interno del código QR');
+
+  aplicarFormatoBasico_();
+
+  return {
+    ok: true,
+    mensaje: 'Sistema institucional configurado correctamente.',
+    spreadsheetId: SPREADSHEET_ID
+  };
 }
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);
-background:radial-gradient(circle at 10% 0,rgba(234,107,177,.18),transparent 28%),radial-gradient(circle at 95% 5%,rgba(88,201,215,.19),transparent 25%),#F9F8FC}
-.wrap{max-width:700px;margin:auto;padding:12px 12px 40px}
-header{display:flex;align-items:center;gap:10px;padding:8px 2px 12px}
-.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--p),var(--pink));color:white;display:grid;place-items:center;font-size:22px;font-weight:900}
-h1{font-size:17px;margin:0}.school{font-size:11px;color:var(--muted);margin-top:3px}
-.door{margin-left:auto;border:1px solid var(--line);background:#fff;padding:8px 10px;border-radius:999px;font-size:11px;font-weight:900;color:var(--p)}
-.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:13px;box-shadow:0 10px 30px rgba(50,39,86,.09);margin-bottom:12px}
-.viewer{position:relative;background:#0C0C0F;border-radius:17px;overflow:hidden;aspect-ratio:3/4;max-height:62vh}
-video{width:100%;height:100%;object-fit:cover;display:block}
-canvas{display:none}.frame{position:absolute;inset:18% 10%;border:3px solid white;border-radius:22px;box-shadow:0 0 0 9999px rgba(0,0,0,.16)}
-.line{position:absolute;left:13%;right:13%;top:50%;height:2px;background:white;box-shadow:0 0 9px white}
-.status{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.65);color:white;border-radius:999px;padding:7px 9px;font-size:10px;font-weight:900}
-.actions{display:grid;grid-template-columns:1fr .45fr;gap:8px;margin-top:10px}
-button{border:0;border-radius:13px;padding:12px;font-weight:900;font-size:13px}
-.primary{background:linear-gradient(135deg,var(--p),var(--pink));color:white}.stop{background:#F2EFF7;color:var(--p)}
-.result{margin-top:10px;border:1px solid var(--line);border-radius:17px;padding:14px;background:#F1F5FB}
-.result .state{font-size:18px;font-weight:950}.result .name{font-size:21px;font-weight:950;line-height:1.1;margin-top:5px}.result .meta{font-size:12px;color:var(--muted);margin-top:6px}
-.result.ok{background:var(--greenbg);border-color:#BDE7D4}.result.ok .state{color:var(--green)}
-.result.late{background:#FFF4DE;border-color:#F0D59C}.result.late .state{color:var(--amber)}
-.result.vip{background:linear-gradient(135deg,#FFF7CE,#FFF0FA 50%,#EDF8FF);border:2px solid var(--gold)}.result.vip .state{color:#8C5B00}
-.result.err{background:var(--redbg);border-color:#EEC1C7}.result.err .state{color:var(--red)}
-.result.read{background:#EEF4FF;border-color:#CADAF5}.result.read .state{color:var(--blue)}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.stat{text-align:center;border:1px solid var(--line);border-radius:13px;padding:8px 3px}.stat b{display:block;font-size:18px}.stat span{font-size:8px;color:var(--muted);font-weight:900}
-.tiny{font-size:10px;color:var(--muted);margin-top:7px;font-weight:700}
-.history{display:flex;flex-direction:column;gap:7px}.item{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:7px 2px}.item:last-child{border:0}.item b{font-size:12px}.item small{display:block;color:var(--muted);margin-top:2px}.pill{font-size:9px;font-weight:950;white-space:nowrap;padding:5px 7px;border-radius:999px;background:#F2EEF9;color:var(--p);height:max-content}
-.modal{position:fixed;inset:0;background:rgba(31,25,44,.54);z-index:20;display:none;align-items:center;justify-content:center;padding:16px}.modal.show{display:flex}.modalbox{width:min(430px,100%);background:#fff;border-radius:22px;padding:18px}.modalbox h2{margin:0 0 5px;font-size:20px}.modalbox p{margin:0 0 12px;color:var(--muted);font-size:12px}
-.doors{display:grid;gap:7px}.doors button{background:#F6F1FE;color:var(--p);border:1px solid var(--line)}.doors button.sel{background:linear-gradient(135deg,var(--p),var(--pink));color:#fff}
-.save{width:100%;margin-top:10px;background:var(--p);color:white}
-@media(min-width:650px){.viewer{aspect-ratio:4/3}}
-</style>
-</head>
-<body>
-<div class="wrap">
-<header><div class="logo">✓</div><div><h1>ASISTENCIA QR PRO · INSTITUCIONAL</h1><div class="school">SEC. #135 · Escáner de entrada</div></div><button class="door" id="doorBtn">SELECCIONAR PERSONA</button></header>
 
-<div class="card">
-  <div class="viewer">
-    <video id="video" playsinline muted></video><canvas id="canvas"></canvas>
-    <div class="frame"></div><div class="line"></div><div class="status" id="camStatus">CÁMARA DETENIDA</div>
-  </div>
-  <div class="actions"><button class="primary" id="start">ABRIR CÁMARA QR</button><button class="stop" id="stop" disabled>DETENER</button></div>
-  <div style="margin-top:10px"><button id="backPanel" style="width:100%;border:1px solid #d8ccef;background:#fff;color:#6f4cc3;border-radius:14px;padding:13px;font-weight:900;font-size:14px;cursor:pointer">← REGRESAR AL PANEL</button></div>
-  <div class="result read" id="result"><div class="state" id="state">LISTO PARA ESCANEAR</div><div class="name" id="name">Acerca el QR del alumno</div><div class="meta" id="meta">Nombre completo al instante · pasa al siguiente sin esperar.</div></div>
-</div>
-
-<div class="card"><div class="stats">
-<div class="stat"><b id="a">—</b><span>ACTIVOS</span></div><div class="stat"><b id="p">—</b><span>PRESENTES</span></div>
-<div class="stat"><b id="r">—</b><span>RETARDOS</span></div><div class="stat"><b id="f">—</b><span>PENDIENTES</span></div>
-</div><div class="tiny" id="queue">Cargando padrón...</div></div>
-
-<div class="card"><b style="font-size:14px">Últimos escaneos</b><div class="history" id="history"></div></div>
-</div>
-
-<div class="modal" id="modal"><div class="modalbox">
-<h2>¿Quién realizará el escaneo?</h2><p>Selecciona tu nombre. Puedes usar cualquiera de los celulares o puertas.</p>
-<div class="doors" id="doors"></div><button class="save" id="saveDoor">CONTINUAR AL ESCÁNER</button>
-</div></div>
-
-<script>
-const API='https://script.google.com/macros/s/AKfycbzmerc3GdNROcQxEVW0BBS-lCLdvZ0M8VHf_HybaaTBgGvvq6g29w3FamFeJxnG-JY4/exec';
-const PANEL_URL=API;
-const $=id=>document.getElementById(id);
-const DEFAULT_PERSONAL=['JULIO','ERIK','OSIRIS','SERGIO','GUILLERMO'];
-const params=new URLSearchParams(location.search);
-const personFromPanel=(params.get('person')||params.get('point')||'').trim().toUpperCase();
-if(personFromPanel) localStorage.setItem('sec135_scanner_persona',personFromPanel);
-let point=personFromPanel || (localStorage.getItem('sec135_scanner_persona')||'');
-let temp=point||'';
-let personal=DEFAULT_PERSONAL.slice();
-let stream=null,scanning=false,raf=null,lastRead='',lastAt=0,armed=true,noQrFrames=0;
-let roster=new Map(),queue=[],working=false;
-const queued=new Map();
-
-function jsonp(params){
- return new Promise((resolve,reject)=>{
-  const cb='cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-  const s=document.createElement('script'); const timer=setTimeout(()=>{clean();reject(new Error('Tiempo de espera agotado'))},12000);
-  function clean(){clearTimeout(timer);delete window[cb];s.remove()}
-  window[cb]=d=>{clean();resolve(d)};
-  params.callback=cb;s.src=API+'?'+new URLSearchParams(params).toString();
-  s.onerror=()=>{clean();reject(new Error('No se pudo conectar con la base institucional'))};
-  document.body.appendChild(s);
- });
+function abrirBase_() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
-async function loadRoster(){
- try{const x=await jsonp({api:'roster'});roster.clear();(x.alumnos||[]).forEach(a=>roster.set(String(a.idQr||'').trim().toUpperCase(),a));$('queue').textContent=`Padrón rápido listo: ${x.total||roster.size} alumnos · Cola 0`}
- catch(e){$('queue').textContent='No se pudo precargar el padrón.'}
-}
-async function summary(){
- try{const x=await jsonp({api:'summary'}),s=x.resumen||{};$('a').textContent=s.totalActivos??0;$('p').textContent=s.presentes??0;$('r').textContent=s.retardos??0;$('f').textContent=s.faltas??0}catch(e){}
-}
-async function loadPersonal(){
- try{
-  const x=await jsonp({api:'personal'});
-  if(Array.isArray(x.personal)&&x.personal.length) personal=x.personal.map(p=>String(p.nombre||p).trim().toUpperCase()).filter(Boolean);
- }catch(e){}
- if(point && !personal.includes(point)){point='';temp='';localStorage.removeItem('sec135_scanner_persona');}
- paintPersonal();
- if(point)$('doorBtn').textContent='👤 '+point;else openDoor();
-}
-function paintPersonal(){
- const box=$('doors');box.innerHTML='';
- personal.forEach(n=>{const b=document.createElement('button');b.dataset.id=n;b.textContent='👤 '+n;b.onclick=()=>{temp=n;paintDoor()};box.appendChild(b)});
- paintDoor();
-}
-function openDoor(){temp=point||'';paintPersonal();$('modal').classList.add('show')}
-function paintDoor(){document.querySelectorAll('#doors button').forEach(b=>b.classList.toggle('sel',b.dataset.id===temp))}
-$('backPanel').onclick=()=>{stop(); window.close(); setTimeout(()=>{window.location.href=PANEL_URL;},250);};
-$('doorBtn').onclick=openDoor;
-$('saveDoor').onclick=()=>{if(!temp){alert('Selecciona tu nombre para continuar.');return}point=temp;localStorage.setItem('sec135_scanner_persona',point);$('doorBtn').textContent='👤 '+point;$('modal').classList.remove('show')};
 
-$('start').onclick=async()=>{
- if(!point){openDoor();return}
- try{
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
-  $('video').srcObject=stream;await $('video').play();scanning=true;$('start').disabled=true;$('stop').disabled=false;$('camStatus').textContent='CÁMARA ACTIVA · LISTA';loop();
- }catch(e){show('err','NO SE PUDO ABRIR LA CÁMARA','Revisa el permiso de cámara.',e.message||String(e))}
-};
-$('stop').onclick=stop;
-function stop(){scanning=false;if(raf)cancelAnimationFrame(raf);raf=null;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('video').srcObject=null;$('start').disabled=false;$('stop').disabled=true;$('camStatus').textContent='CÁMARA DETENIDA'}
-function loop(){
- if(!scanning)return;const v=$('video');
- if(v.readyState>=2&&v.videoWidth){
-  const c=$('canvas'),ctx=c.getContext('2d',{willReadFrequently:true}),w=640,scale=Math.min(1,w/v.videoWidth);
-  c.width=Math.max(320,Math.round(v.videoWidth*scale));c.height=Math.max(240,Math.round(v.videoHeight*scale));ctx.drawImage(v,0,0,c.width,c.height);
-  const im=ctx.getImageData(0,0,c.width,c.height),q=jsQR(im.data,c.width,c.height,{inversionAttempts:'dontInvert'});
-  if(q?.data){
-    noQrFrames=0;
-    if(armed) detect(q.data);
-  }else{
-    noQrFrames++;
-    // Rearma únicamente cuando el QR ya salió de la cámara.
-    if(noQrFrames>=8){ armed=true; lastRead=''; }
+function crearORepararHoja_(ss, nombre, encabezados) {
+  let sh = ss.getSheetByName(nombre);
+  if (!sh) sh = ss.insertSheet(nombre);
+
+  const actual = sh.getRange(1, 1, 1, encabezados.length).getDisplayValues()[0];
+  const vacia = actual.every(v => !String(v).trim());
+
+  if (vacia) {
+    sh.getRange(1, 1, 1, encabezados.length).setValues([encabezados]);
+  } else {
+    encabezados.forEach((h, i) => {
+      if (!String(actual[i] || '').trim()) sh.getRange(1, i + 1).setValue(h);
+    });
   }
- }raf=requestAnimationFrame(loop)
+
+  sh.setFrozenRows(1);
+  return sh;
 }
-function detect(raw){
- const qr=String(raw||'').trim().toUpperCase(),now=Date.now();if(!qr||!armed||queued.has(qr))return;
- armed=false; noQrFrames=0; lastRead=qr;lastAt=now;const a=roster.get(qr);
- const item={id:'i'+now+Math.random().toString(16).slice(2),qr,a};queued.set(qr,true);
- if(a)show('read','QR LEÍDO · REGISTRANDO',a.nombre,`${a.grado}°${a.grupo} · No. ${a.numLista} · Matrícula ${pad(a.matricula)}`);
- else show('read','QR LEÍDO · VERIFICANDO','Consultando alumno...',qr);
- addHistory(item);queue.push(item);qtext();process();
+
+function aplicarFormatoBasico_() {
+  const ss = abrirBase_();
+  Object.values(HOJAS).forEach(nombre => {
+    const sh = ss.getSheetByName(nombre);
+    if (!sh) return;
+    const lc = Math.max(sh.getLastColumn(), 1);
+    sh.getRange(1, 1, 1, lc)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setBackground('#5B4B8A')
+      .setFontColor('#FFFFFF');
+    sh.autoResizeColumns(1, lc);
+  });
 }
-async function process(){
- if(working||!queue.length)return;working=true;const i=queue.shift();qtext();
- try{
-  const x=await jsonp({api:'scan',qr:i.qr,scanner:point}),a=x.alumno||i.a||{};
-  updateHistory(i.id,x);
-  if(x.tipo==='REGISTRADO'){
-   const late=x.asistencia?.estatus==='RETARDO';show(late?'late':'ok',late?'RETARDO REGISTRADO':'REGISTRADO ✓',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · ${x.asistencia?.hora||''} · ${point}`);buzz(50);summary();
-  }else if(x.tipo==='YA_REGISTRADO'){
-   show('vip','VIP ✨ · YA REGISTRADO',a.nombre||'Alumno',`${a.grado||''}°${a.grupo||''} · No. ${a.numLista||''} · Registro previo ${x.asistencia?.hora||''}`);buzz([40,50,40]);
-  }else show('err',x.mensaje||'NO REGISTRADO',a.nombre||'QR no encontrado',i.qr);
- }catch(e){show('err','ERROR DE REGISTRO',i.a?.nombre||'No se pudo guardar',e.message)}
- finally{queued.delete(i.qr);working=false;qtext();if(queue.length)process();else $('camStatus').textContent=scanning?'CÁMARA ACTIVA · LISTA':'CÁMARA DETENIDA'}
+
+/* =========================================================
+   CONFIGURACIÓN
+========================================================= */
+
+function establecerConfigSiFalta_(clave, valor, descripcion) {
+  const sh = abrirBase_().getSheetByName(HOJAS.CONFIG);
+  const datos = sh.getDataRange().getValues();
+
+  for (let i = 1; i < datos.length; i++) {
+    if (normalizar_(datos[i][0]).toUpperCase() === clave.toUpperCase()) return;
+  }
+
+  sh.appendRow([clave, valor, descripcion || '']);
 }
-function show(cls,st,n,m){$('result').className='result '+cls;$('state').textContent=st;$('name').textContent=n;$('meta').textContent=m||''}
-function addHistory(i){const d=document.createElement('div');d.id=i.id;d.className='item';d.innerHTML=`<div><b>${esc(i.a?.nombre||i.qr)}</b><small>${i.a?`${i.a.grado}°${i.a.grupo} · No. ${i.a.numLista}`:'Procesando...'}</small></div><span class="pill">PROCESANDO</span>`;$('history').prepend(d);while($('history').children.length>6)$('history').lastElementChild.remove()}
-function updateHistory(id,x){const d=$(id);if(!d)return;const a=x.alumno||{},p=d.querySelector('.pill');if(a.nombre){d.querySelector('b').textContent=a.nombre;d.querySelector('small').textContent=`${a.grado}°${a.grupo} · No. ${a.numLista} · ${x.asistencia?.hora||''}`};p.textContent=x.tipo==='REGISTRADO'?(x.asistencia?.estatus||'REGISTRADO'):x.tipo==='YA_REGISTRADO'?'VIP · YA REGISTRADO':'ERROR'}
-function qtext(){$('queue').textContent=`Padrón rápido: ${roster.size} alumnos · Pendientes de guardar: ${queue.length+(working?1:0)}`}
-function pad(v){return String(v??'').replace(/\D/g,'').padStart(4,'0')}function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}function buzz(x){try{navigator.vibrate?.(x)}catch(e){}}
-loadRoster();summary();loadPersonal();
-</script>
-</body></html>
+
+function obtenerConfiguracion() {
+  const sh = abrirBase_().getSheetByName(HOJAS.CONFIG);
+  const datos = sh.getDataRange().getDisplayValues();
+  const cfg = {};
+
+  for (let i = 1; i < datos.length; i++) {
+    const clave = normalizar_(datos[i][0]);
+    if (clave) cfg[clave] = datos[i][1];
+  }
+
+  return cfg;
+}
+
+function guardarConfiguracion(payload) {
+  payload = payload || {};
+  const permitidas = ['ESCUELA','CICLO_ESCOLAR','HORA_ENTRADA','LIMITE_RETARDO','ESCANERES'];
+  const sh = abrirBase_().getSheetByName(HOJAS.CONFIG);
+  const datos = sh.getDataRange().getValues();
+
+  permitidas.forEach(clave => {
+    if (!(clave in payload)) return;
+    let encontrada = false;
+
+    for (let i = 1; i < datos.length; i++) {
+      if (normalizar_(datos[i][0]).toUpperCase() === clave) {
+        sh.getRange(i + 1, 2).setValue(payload[clave]);
+        encontrada = true;
+        break;
+      }
+    }
+
+    if (!encontrada) sh.appendRow([clave, payload[clave], '']);
+  });
+
+  auditar_('CONFIGURACION', '', '', JSON.stringify(payload));
+  return { ok: true, configuracion: obtenerConfiguracion() };
+}
+
+
+/* =========================================================
+   PERSONAL DE ESCANEO
+========================================================= */
+
+function asegurarPersonalEscaneo_() {
+  const ss = abrirBase_();
+  let sh = ss.getSheetByName(HOJAS.PERSONAL_ESCANEO);
+  if (!sh) {
+    sh = ss.insertSheet(HOJAS.PERSONAL_ESCANEO);
+    sh.getRange(1,1,1,6).setValues([['ID','NOMBRE','ESTATUS','FECHA_ALTA','FECHA_BAJA','OBSERVACIONES']]);
+  }
+  inicializarPersonalEscaneo_();
+  return sh;
+}
+
+function inicializarPersonalEscaneo_() {
+  const sh = abrirBase_().getSheetByName(HOJAS.PERSONAL_ESCANEO);
+  if (!sh || sh.getLastRow() >= 2) return;
+
+  const nombres = ['JULIO','ERIK','OSIRIS','SERGIO','GUILLERMO'];
+  const ahora = new Date();
+  const filas = nombres.map((nombre, i) => [
+    'PE-' + String(i + 1).padStart(3, '0'), nombre, 'ACTIVO', ahora, '', ''
+  ]);
+  sh.getRange(2, 1, filas.length, 6).setValues(filas);
+  auditar_('INICIALIZAR_PERSONAL_ESCANEO', '', '', nombres.join(', '));
+}
+
+function obtenerPersonalEscaneo(soloActivos) {
+  const sh = asegurarPersonalEscaneo_();
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getValues()
+    .map((r, i) => ({
+      fila:i+2, id:normalizar_(r[0]), nombre:normalizar_(r[1]),
+      estatus:normalizar_(r[2] || 'ACTIVO').toUpperCase(),
+      fechaAlta:fechaWeb_(r[3]), fechaBaja:fechaWeb_(r[4]),
+      observaciones:normalizar_(r[5])
+    }))
+    .filter(p => p.nombre && (!soloActivos || p.estatus === 'ACTIVO'));
+}
+
+function guardarPersonalEscaneo(payload) {
+  payload = payload || {};
+  const sh = abrirBase_().getSheetByName(HOJAS.PERSONAL_ESCANEO);
+  if (!sh) throw new Error('No existe la hoja Personal_Escaneo. Ejecuta configurarSistemaInstitucional una vez.');
+
+  const nombre = normalizar_(payload.nombre).toUpperCase();
+  const obs = normalizar_(payload.observaciones);
+  if (!nombre) throw new Error('Falta el nombre de la persona.');
+  const personal = obtenerPersonalEscaneo(false);
+
+  if (payload.id) {
+    const id = normalizar_(payload.id);
+    const p = personal.find(x => x.id === id);
+    if (!p) throw new Error('No se encontró a la persona.');
+    sh.getRange(p.fila, 2).setValue(nombre);
+    sh.getRange(p.fila, 6).setValue(obs);
+    auditar_('EDITAR_PERSONAL_ESCANEO', '', nombre, id);
+    return {ok:true,nuevo:false,persona:obtenerPersonalEscaneo(false).find(x=>x.id===id)};
+  }
+
+  if (personal.some(p => p.nombre.toUpperCase() === nombre))
+    throw new Error('Ya existe una persona con ese nombre.');
+
+  const lock=LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    let max=0;
+    obtenerPersonalEscaneo(false).forEach(p=>{
+      const m=String(p.id||'').match(/(\d+)$/);
+      if(m) max=Math.max(max,Number(m[1])||0);
+    });
+    const id='PE-'+String(max+1).padStart(3,'0');
+    sh.appendRow([id,nombre,'ACTIVO',new Date(),'',obs]);
+    auditar_('ALTA_PERSONAL_ESCANEO','',nombre,id);
+    return {ok:true,nuevo:true,persona:obtenerPersonalEscaneo(false).find(x=>x.id===id)};
+  } finally { lock.releaseLock(); }
+}
+
+function cambiarEstadoPersonalEscaneo(id, activo) {
+  const p=obtenerPersonalEscaneo(false).find(x=>x.id===normalizar_(id));
+  if(!p) throw new Error('No se encontró a la persona.');
+  const sh=abrirBase_().getSheetByName(HOJAS.PERSONAL_ESCANEO);
+  sh.getRange(p.fila,3).setValue(activo?'ACTIVO':'INACTIVO');
+  sh.getRange(p.fila,5).setValue(activo?'':new Date());
+  auditar_(activo?'REACTIVAR_PERSONAL_ESCANEO':'BAJA_PERSONAL_ESCANEO','',p.nombre,p.id);
+  return {ok:true,persona:obtenerPersonalEscaneo(false).find(x=>x.id===p.id)};
+}
+
+/* =========================================================
+   ALUMNOS / PADRÓN
+========================================================= */
+
+function obtenerAlumnos(filtros) {
+  filtros = filtros || {};
+  const sh = abrirBase_().getSheetByName(HOJAS.ALUMNOS);
+  const datos = sh.getDataRange().getValues();
+  const res = [];
+
+  for (let i = 1; i < datos.length; i++) {
+    const a = filaAlumnoAObjeto_(datos[i], i + 1);
+    if (!a.nombre) continue;
+
+    if (filtros.grado && String(a.grado) !== String(filtros.grado)) continue;
+    if (filtros.grupo && a.grupo !== normalizar_(filtros.grupo).toUpperCase()) continue;
+    if (filtros.estatus && a.estatus !== normalizar_(filtros.estatus).toUpperCase()) continue;
+
+    if (filtros.buscar) {
+      const q = normalizar_(filtros.buscar).toUpperCase();
+      const bolsa = [a.matricula, a.idQr, a.nombre, a.grado, a.grupo, a.numLista].join(' ').toUpperCase();
+      if (!bolsa.includes(q)) continue;
+    }
+
+    res.push(a);
+  }
+
+  return res;
+}
+
+function buscarAlumnoPorQr(qr) {
+  const limpio = normalizarQr_(qr);
+  if (!limpio) return { ok: false, mensaje: 'QR vacío.' };
+
+  const a = buscarAlumnoPorQrInterno_(limpio);
+  if (!a) return { ok: false, mensaje: 'QR NO REGISTRADO' };
+  if (a.estatus !== 'ACTIVO') return { ok: false, mensaje: 'ALUMNO INACTIVO', alumno: a };
+
+  return { ok: true, alumno: a };
+}
+
+function buscarAlumnoPorMatricula(matricula) {
+  const mat = soloMatricula_(matricula);
+  if (!mat) return null;
+
+  const sh = abrirBase_().getSheetByName(HOJAS.ALUMNOS);
+  const datos = sh.getDataRange().getValues();
+
+  for (let i = 1; i < datos.length; i++) {
+    if (soloMatricula_(datos[i][0]) === mat) return filaAlumnoAObjeto_(datos[i], i + 1);
+  }
+  return null;
+}
+
+function guardarAlumno(payload) {
+  payload = payload || {};
+  const sh = abrirBase_().getSheetByName(HOJAS.ALUMNOS);
+
+  const nombre = normalizar_(payload.nombre).toUpperCase();
+  const grado = Number(payload.grado);
+  const grupo = normalizar_(payload.grupo).toUpperCase();
+  const numLista = Number(payload.numLista);
+
+  if (!nombre) throw new Error('Falta el nombre del alumno.');
+  if (![1,2,3].includes(grado)) throw new Error('El grado debe ser 1, 2 o 3.');
+  if (!/^[A-H]$/.test(grupo)) throw new Error('Grupo no válido.');
+  if (!Number.isFinite(numLista) || numLista < 1) throw new Error('Número de lista no válido.');
+
+  // EDICIÓN
+  if (payload.matricula) {
+    const existente = buscarAlumnoPorMatricula(payload.matricula);
+    if (!existente) throw new Error('No se encontró la matrícula.');
+
+    const fila = existente.fila;
+    const estatus = normalizar_(payload.estatus || existente.estatus || 'ACTIVO').toUpperCase();
+    sh.getRange(fila, 3, 1, 8).setValues([[
+      nombre,
+      grado,
+      grupo,
+      numLista,
+      estatus,
+      existente.fechaAlta || new Date(),
+      estatus === 'INACTIVO' ? (existente.fechaBaja || new Date()) : '',
+      normalizar_(payload.observaciones)
+    ]]);
+
+    auditar_('EDITAR_ALUMNO', existente.matricula, nombre, `${grado}°${grupo} No.${numLista} ${estatus}`);
+    return { ok: true, nuevo: false, alumno: buscarAlumnoPorMatricula(existente.matricula) };
+  }
+
+  // NUEVO INGRESO: matrícula permanente y siguiente consecutivo disponible.
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const matricula = siguienteMatricula_();
+    const idQr = PREFIJO_QR + matricula;
+    const fechaAlta = new Date();
+
+    sh.appendRow([
+      matricula,
+      idQr,
+      nombre,
+      grado,
+      grupo,
+      numLista,
+      'ACTIVO',
+      fechaAlta,
+      '',
+      normalizar_(payload.observaciones)
+    ]);
+
+    auditar_('ALTA_ALUMNO', matricula, nombre, `${grado}°${grupo} No.${numLista}`);
+
+    return {
+      ok: true,
+      nuevo: true,
+      alumno: buscarAlumnoPorMatricula(matricula),
+      qr: {
+        contenido: idQr,
+        matricula: matricula
+      }
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function cambiarEstadoAlumno(matricula, activo, motivo) {
+  const a = buscarAlumnoPorMatricula(matricula);
+  if (!a) throw new Error('Alumno no encontrado.');
+
+  const sh = abrirBase_().getSheetByName(HOJAS.ALUMNOS);
+  const nuevo = activo ? 'ACTIVO' : 'INACTIVO';
+
+  sh.getRange(a.fila, 7).setValue(nuevo);
+  sh.getRange(a.fila, 9).setValue(activo ? '' : new Date());
+
+  auditar_(
+    activo ? 'REACTIVAR_ALUMNO' : 'BAJA_ALUMNO',
+    a.matricula,
+    a.nombre,
+    normalizar_(motivo)
+  );
+
+  return { ok: true, alumno: buscarAlumnoPorMatricula(a.matricula) };
+}
+
+function obtenerQrAlumno(matricula) {
+  const a = buscarAlumnoPorMatricula(matricula);
+  if (!a) throw new Error('Alumno no encontrado.');
+
+  return {
+    ok: true,
+    contenido: a.idQr,
+    matricula: a.matricula,
+    nombre: a.nombre,
+    grado: a.grado,
+    grupo: a.grupo,
+    numLista: a.numLista
+  };
+}
+
+function siguienteMatricula_() {
+  const sh = abrirBase_().getSheetByName(HOJAS.ALUMNOS);
+  const last = sh.getLastRow();
+  if (last < 2) return '0001';
+
+  const vals = sh.getRange(2, 1, last - 1, 1).getDisplayValues().flat();
+  let max = 0;
+
+  vals.forEach(v => {
+    const n = parseInt(soloMatricula_(v), 10);
+    if (Number.isFinite(n)) max = Math.max(max, n);
+  });
+
+  return String(max + 1).padStart(4, '0');
+}
+
+/* =========================================================
+   IMPORTAR BASE MAESTRA
+========================================================= */
+
+/**
+ * Úsala si importas el Excel de Base Maestra como una hoja llamada BASE_MAESTRA.
+ * Copia los alumnos a "Alumnos" conservando matrícula e ID QR.
+ * No duplica matrículas ya existentes.
+ */
+function importarBaseMaestra() {
+  const ss = abrirBase_();
+  const origen = ss.getSheetByName('BASE_MAESTRA');
+  if (!origen) throw new Error('No existe una hoja llamada BASE_MAESTRA.');
+
+  const destino = ss.getSheetByName(HOJAS.ALUMNOS);
+  const datos = origen.getDataRange().getValues();
+  if (datos.length < 2) throw new Error('BASE_MAESTRA no contiene alumnos.');
+
+  const existentes = new Set();
+  if (destino.getLastRow() >= 2) {
+    destino.getRange(2, 1, destino.getLastRow() - 1, 1)
+      .getDisplayValues().flat()
+      .forEach(v => existentes.add(soloMatricula_(v)));
+  }
+
+  const nuevas = [];
+
+  for (let i = 1; i < datos.length; i++) {
+    const mat = soloMatricula_(datos[i][0]);
+    const idQr = normalizar_(datos[i][1]) || (PREFIJO_QR + mat);
+    const nombre = normalizar_(datos[i][2]).toUpperCase();
+    const grado = datos[i][3];
+    const grupo = normalizar_(datos[i][4]).toUpperCase();
+    const num = datos[i][5];
+    const estatus = normalizar_(datos[i][6] || 'ACTIVO').toUpperCase();
+
+    if (!mat || !nombre || existentes.has(mat)) continue;
+
+    nuevas.push([
+      mat, idQr, nombre, grado, grupo, num,
+      estatus || 'ACTIVO',
+      datos[i][7] || new Date(),
+      datos[i][8] || '',
+      datos[i][9] || ''
+    ]);
+    existentes.add(mat);
+  }
+
+  if (nuevas.length) {
+    destino.getRange(destino.getLastRow() + 1, 1, nuevas.length, 10).setValues(nuevas);
+  }
+
+  auditar_('IMPORTAR_BASE_MAESTRA', '', '', `${nuevas.length} alumnos importados`);
+
+  return {
+    ok: true,
+    importados: nuevas.length,
+    totalPadron: Math.max(destino.getLastRow() - 1, 0)
+  };
+}
+
+/* =========================================================
+   ESCÁNER / ASISTENCIA
+========================================================= */
+
+function registrarAsistenciaQR(qrId, escanerId, grupoEsperado, modo) {
+  const idQr = normalizarQr_(qrId);
+  const escaner = normalizar_(escanerId || 'AULA').toUpperCase();
+  const grupoSel = normalizar_(grupoEsperado).toUpperCase();
+  const modoSel = normalizar_(modo).toUpperCase();
+
+  if (!idQr) return { ok: false, tipo: 'ERROR', mensaje: 'QR vacío.' };
+
+  const alumno = buscarAlumnoPorQrInterno_(idQr);
+  if (!alumno) return { ok:false, tipo:'NO_REGISTRADO', mensaje:'QR NO REGISTRADO' };
+  if (alumno.estatus !== 'ACTIVO') return { ok:false, tipo:'INACTIVO', mensaje:'ALUMNO INACTIVO', alumno };
+
+  // En modo aula evitamos registrar por accidente a un alumno de otro salón.
+  const claveAlumno = `${alumno.grado}°${alumno.grupo}`.toUpperCase();
+  if (grupoSel && claveAlumno !== grupoSel) {
+    return { ok:false, tipo:'GRUPO_INCORRECTO', mensaje:`PERTENECE A ${claveAlumno}`, alumno };
+  }
+
+  const ahora = new Date();
+  const fecha = Utilities.formatDate(ahora, TZ, 'yyyy-MM-dd');
+  const hora = Utilities.formatDate(ahora, TZ, 'HH:mm:ss');
+
+  // La toma en primera hora registra asistencia, no retardo por la hora en que
+  // el docente alcance a escanear dentro del salón. El modo entrada conserva
+  // la regla institucional de retardo.
+  let estatus = 'PRESENTE';
+  if (modoSel !== 'AULA') {
+    const cfg = obtenerConfiguracion();
+    const limite = normalizar_(cfg.LIMITE_RETARDO || '07:33');
+    estatus = hora.substring(0,5) > limite ? 'RETARDO' : 'PRESENTE';
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sh = abrirBase_().getSheetByName(HOJAS.ASISTENCIAS);
+    const duplicado = buscarRegistroDelDia_(sh, fecha, alumno.matricula);
+    if (duplicado) return { ok:true, tipo:'YA_REGISTRADO', mensaje:'YA REGISTRADO', alumno, asistencia:duplicado };
+
+    sh.appendRow([
+      fecha, hora, alumno.matricula, alumno.idQr, alumno.nombre, alumno.grado,
+      alumno.grupo, alumno.numLista, estatus, escaner,
+      modoSel === 'AULA' ? 'QR-AULA' : 'QR', ahora
+    ]);
+
+    return { ok:true, tipo:'REGISTRADO', mensaje:'REGISTRADO', alumno,
+      asistencia:{fecha,hora,estatus,escaner} };
+  } finally { lock.releaseLock(); }
+}
+
+function registrarAsistenciaManual(matricula, estatus, motivo, escanerId) {
+  const a = buscarAlumnoPorMatricula(matricula);
+  if (!a) throw new Error('Alumno no encontrado.');
+  if (a.estatus !== 'ACTIVO') throw new Error('El alumno está inactivo.');
+
+  const nuevoEstatus = normalizar_(estatus || 'PRESENTE').toUpperCase();
+  if (!['PRESENTE','RETARDO'].includes(nuevoEstatus)) {
+    throw new Error('Estatus no válido.');
+  }
+
+  const ahora = new Date();
+  const fecha = Utilities.formatDate(ahora, TZ, 'yyyy-MM-dd');
+  const hora = Utilities.formatDate(ahora, TZ, 'HH:mm:ss');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const sh = abrirBase_().getSheetByName(HOJAS.ASISTENCIAS);
+    const duplicado = buscarRegistroDelDia_(sh, fecha, a.matricula);
+    if (duplicado) return { ok: true, tipo: 'YA_REGISTRADO', alumno: a, asistencia: duplicado };
+
+    sh.appendRow([
+      fecha, hora, a.matricula, a.idQr, a.nombre, a.grado, a.grupo,
+      a.numLista, nuevoEstatus, normalizar_(escanerId || 'ADMIN'), 'MANUAL', ahora
+    ]);
+
+    auditar_('ASISTENCIA_MANUAL', a.matricula, a.nombre, normalizar_(motivo));
+
+    return {
+      ok: true,
+      tipo: 'REGISTRADO',
+      alumno: a,
+      asistencia: { fecha, hora, estatus: nuevoEstatus }
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buscarRegistroDelDia_(sh, fecha, matricula) {
+  const lr = sh.getLastRow();
+  if (lr < 2) return null;
+
+  // Para una escuela de ~861 alumnos, leer solo la parte reciente mantiene
+  // rápido el control de duplicados y evita recorrer todo el historial.
+  const maxFilas = Math.min(lr - 1, 2500);
+  const inicio = lr - maxFilas + 1;
+  const datos = sh.getRange(inicio, 1, maxFilas, 11).getDisplayValues();
+
+  for (let i = datos.length - 1; i >= 0; i--) {
+    if (normalizar_(datos[i][0]) === fecha && soloMatricula_(datos[i][2]) === matricula) {
+      return {
+        fecha: datos[i][0],
+        hora: datos[i][1],
+        estatus: datos[i][8],
+        escaner: datos[i][9],
+        origen: datos[i][10]
+      };
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   CORRECCIONES
+========================================================= */
+
+function corregirAsistencia(payload) {
+  payload = payload || {};
+  const matricula = soloMatricula_(payload.matricula);
+  const fecha = normalizar_(payload.fecha);
+  const nuevoEstatus = normalizar_(payload.estatus).toUpperCase();
+  const nuevaHora = normalizar_(payload.hora);
+  const motivo = normalizar_(payload.motivo);
+
+  if (!matricula || !fecha) throw new Error('Faltan matrícula o fecha.');
+  if (!['PRESENTE','RETARDO'].includes(nuevoEstatus)) throw new Error('Estatus no válido.');
+
+  const ss = abrirBase_();
+  const sh = ss.getSheetByName(HOJAS.ASISTENCIAS);
+  const datos = sh.getDataRange().getDisplayValues();
+
+  for (let i = datos.length - 1; i >= 1; i--) {
+    if (normalizar_(datos[i][0]) === fecha && soloMatricula_(datos[i][2]) === matricula) {
+      const anterior = datos[i][8];
+      const horaAnterior = datos[i][1];
+      const nombre = datos[i][4];
+
+      sh.getRange(i + 1, 2).setValue(nuevaHora || horaAnterior);
+      sh.getRange(i + 1, 9).setValue(nuevoEstatus);
+
+      ss.getSheetByName(HOJAS.CORRECCIONES).appendRow([
+        new Date(), matricula, nombre, fecha,
+        anterior, nuevoEstatus, horaAnterior, nuevaHora || horaAnterior,
+        motivo, usuario_(), new Date()
+      ]);
+
+      auditar_('CORREGIR_ASISTENCIA', matricula, nombre, `${fecha}: ${anterior} -> ${nuevoEstatus}`);
+
+      return { ok: true };
+    }
+  }
+
+  throw new Error('No se encontró la asistencia indicada.');
+}
+
+/* =========================================================
+   REPORTES
+========================================================= */
+
+function obtenerResumenHoy() {
+  return obtenerResumenFecha(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'));
+}
+
+function obtenerResumenFecha(fecha) {
+  fecha = normalizar_(fecha);
+  const alumnos = obtenerAlumnos({ estatus: 'ACTIVO' });
+  const registros = obtenerAsistenciasFecha_(fecha);
+
+  const porMatricula = {};
+  registros.forEach(r => { porMatricula[r.matricula] = r; });
+
+  const resumen = {
+    fecha,
+    totalActivos: alumnos.length,
+    presentes: 0,
+    retardos: 0,
+    faltas: 0,
+    porGrado: {},
+    porGrupo: {},
+    faltantes: []
+  };
+
+  alumnos.forEach(a => {
+    const r = porMatricula[a.matricula];
+    const estado = r ? r.estatus : 'FALTA';
+
+    if (estado === 'PRESENTE') resumen.presentes++;
+    else if (estado === 'RETARDO') resumen.retardos++;
+    else resumen.faltas++;
+
+    const g = String(a.grado);
+    const gg = `${a.grado}°${a.grupo}`;
+
+    if (!resumen.porGrado[g]) resumen.porGrado[g] = nuevoContador_();
+    if (!resumen.porGrupo[gg]) resumen.porGrupo[gg] = nuevoContador_();
+
+    sumarEstado_(resumen.porGrado[g], estado);
+    sumarEstado_(resumen.porGrupo[gg], estado);
+
+    if (!r) resumen.faltantes.push(a);
+  });
+
+  return resumen;
+}
+
+function obtenerReporteGrupo(fecha, grado, grupo) {
+  const alumnos = obtenerAlumnos({
+    grado: grado,
+    grupo: grupo,
+    estatus: 'ACTIVO'
+  });
+
+  const registros = obtenerAsistenciasFecha_(normalizar_(fecha));
+  const mapa = {};
+  registros.forEach(r => { mapa[r.matricula] = r; });
+
+  return alumnos.map(a => ({
+    matricula: a.matricula,
+    numLista: a.numLista,
+    nombre: a.nombre,
+    grado: a.grado,
+    grupo: a.grupo,
+    estatus: mapa[a.matricula] ? mapa[a.matricula].estatus : 'FALTA',
+    hora: mapa[a.matricula] ? mapa[a.matricula].hora : ''
+  }));
+}
+
+function obtenerAsistenciasFecha_(fecha) {
+  const sh = abrirBase_().getSheetByName(HOJAS.ASISTENCIAS);
+  const lr = sh.getLastRow();
+  if (lr < 2) return [];
+
+  const datos = sh.getRange(2, 1, lr - 1, 12).getDisplayValues();
+  const res = [];
+
+  datos.forEach(r => {
+    if (normalizar_(r[0]) !== fecha) return;
+    res.push({
+      fecha: r[0],
+      hora: r[1],
+      matricula: soloMatricula_(r[2]),
+      idQr: r[3],
+      nombre: r[4],
+      grado: r[5],
+      grupo: r[6],
+      numLista: r[7],
+      estatus: r[8],
+      escaner: r[9],
+      origen: r[10]
+    });
+  });
+
+  return res;
+}
+
+function nuevoContador_() {
+  return { total: 0, presentes: 0, retardos: 0, faltas: 0 };
+}
+
+function sumarEstado_(obj, estado) {
+  obj.total++;
+  if (estado === 'PRESENTE') obj.presentes++;
+  else if (estado === 'RETARDO') obj.retardos++;
+  else obj.faltas++;
+}
+
+
+/* =========================================================
+   REPORTES DETALLADOS / EXPORTACIÓN
+   Conserva los reportes existentes y agrega datos para
+   impresión compacta y descarga compatible con Excel.
+========================================================= */
+
+function obtenerReporteDetallado(fechas, grado, grupo) {
+  fechas = Array.isArray(fechas) ? fechas.map(normalizar_).filter(Boolean) : [];
+  if (!fechas.length) return { ok:true, filas:[], resumenGrupos:[] };
+
+  grado = normalizar_(grado);
+  grupo = normalizar_(grupo).toUpperCase();
+
+  const filtros = { estatus:'ACTIVO' };
+  if (grado) filtros.grado = grado;
+  if (grupo) filtros.grupo = grupo;
+
+  const alumnos = obtenerAlumnos(filtros).sort((a,b) => {
+    const ga = Number(a.grado)||0, gb = Number(b.grado)||0;
+    if (ga !== gb) return ga-gb;
+    const cg = String(a.grupo||'').localeCompare(String(b.grupo||''),'es');
+    if (cg) return cg;
+    return (Number(a.numLista)||9999)-(Number(b.numLista)||9999);
+  });
+
+  const wanted = new Set(fechas);
+  const asistencia = {};
+  const sh = abrirBase_().getSheetByName(HOJAS.ASISTENCIAS);
+  const lr = sh.getLastRow();
+
+  if (lr >= 2) {
+    const rows = sh.getRange(2,1,lr-1,12).getDisplayValues();
+    rows.forEach(r => {
+      const fecha = normalizar_(r[0]);
+      if (!wanted.has(fecha)) return;
+      const mat = soloMatricula_(r[2]);
+      if (!mat) return;
+      asistencia[fecha+'|'+mat] = {
+        hora: normalizar_(r[1]),
+        estatus: normalizar_(r[8]).toUpperCase(),
+        escaner: normalizar_(r[9]),
+        origen: normalizar_(r[10])
+      };
+    });
+  }
+
+  const filas = [];
+  const resumen = {};
+
+  fechas.forEach(fecha => {
+    alumnos.forEach(a => {
+      const r = asistencia[fecha+'|'+a.matricula];
+      const estatus = r && (r.estatus==='PRESENTE' || r.estatus==='RETARDO') ? r.estatus : 'FALTA';
+      const clave = `${a.grado}°${a.grupo}`;
+      if (!resumen[clave]) resumen[clave] = { grado:a.grado, grupo:a.grupo, total:0, presentes:0, retardos:0, faltas:0 };
+      resumen[clave].total++;
+      if (estatus==='PRESENTE') resumen[clave].presentes++;
+      else if (estatus==='RETARDO') resumen[clave].retardos++;
+      else resumen[clave].faltas++;
+
+      filas.push({
+        fecha,
+        grado:a.grado,
+        grupo:a.grupo,
+        numLista:a.numLista,
+        matricula:a.matricula,
+        nombre:a.nombre,
+        estatus,
+        hora:r ? r.hora : '',
+        escaner:r ? r.escaner : '',
+        origen:r ? r.origen : ''
+      });
+    });
+  });
+
+  const resumenGrupos = Object.values(resumen).map(x => ({
+    ...x,
+    porcentaje: x.total ? Math.round(((x.presentes+x.retardos)/x.total)*1000)/10 : 0
+  }));
+
+  return {
+    ok:true,
+    escuela:ESCUELA,
+    ciclo:CICLO,
+    fechas,
+    filas,
+    resumenGrupos
+  };
+}
+
+
+/* =========================================================
+   PANEL / DATOS INICIALES
+========================================================= */
+
+function obtenerInicio() {
+  return {
+    ok: true,
+    escuela: ESCUELA,
+    ciclo: CICLO,
+    configuracion: obtenerConfiguracion(),
+    resumenHoy: obtenerResumenHoy()
+  };
+}
+
+/* =========================================================
+   WEB APP
+========================================================= */
+
+function responderApi_(data, callback) {
+  const json = JSON.stringify(data);
+  callback = normalizar_(callback);
+  if (callback && /^[A-Za-z_$][0-9A-Za-z_$\.]*$/.test(callback)) {
+    return ContentService.createTextOutput(`${callback}(${json})`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json)
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  const p = (e && e.parameter) ? e.parameter : {};
+  const api = normalizar_(p.api).toLowerCase();
+
+  // API para escáner externo: registrar QR.
+  if (api === 'scan') {
+    return responderApi_(
+      registrarAsistenciaQR(
+        p.qr || p.code || '',
+        p.scanner || p.escaner || 'AULA',
+        p.grupo || p.group || '',
+        p.modo || p.mode || ''
+      ),
+      p.callback
+    );
+  }
+
+  // Padrón activo ligero para mostrar el nombre INMEDIATAMENTE al leer el QR.
+  if (api === 'roster') {
+    const alumnos = obtenerAlumnos({ estatus: 'ACTIVO' }).map(a => ({
+      matricula: a.matricula,
+      idQr: a.idQr,
+      nombre: a.nombre,
+      grado: a.grado,
+      grupo: a.grupo,
+      numLista: a.numLista
+    }));
+    return responderApi_({ ok: true, alumnos: alumnos, total: alumnos.length }, p.callback);
+  }
+
+  // Contadores de hoy para el escáner externo.
+  if (api === 'summary') {
+    return responderApi_({ ok: true, resumen: obtenerResumenHoy() }, p.callback);
+  }
+
+  // Personal activo para el escáner externo.
+  if (api === 'personal') {
+    const personal = obtenerPersonalEscaneo(true).map(x => ({ id: x.id, nombre: x.nombre }));
+    return responderApi_({ ok: true, personal: personal }, p.callback);
+  }
+
+  // Panel institucional normal.
+  return HtmlService
+    .createHtmlOutputFromFile('index')
+    .setTitle('Asistencia QR Pro · Institucional · SEC. 135')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/* =========================================================
+   UTILIDADES INTERNAS
+========================================================= */
+
+function filaAlumnoAObjeto_(r, fila) {
+  return {
+    fila: fila,
+    matricula: soloMatricula_(r[0]),
+    idQr: normalizar_(r[1]),
+    nombre: normalizar_(r[2]),
+    grado: r[3],
+    grupo: normalizar_(r[4]).toUpperCase(),
+    numLista: r[5],
+    estatus: normalizar_(r[6] || 'ACTIVO').toUpperCase(),
+    // IMPORTANTE: google.script.run no puede devolver objetos Date al navegador.
+    // Se convierten a texto para que padrón, contadores, búsquedas y reportes carguen correctamente.
+    fechaAlta: fechaWeb_(r[7]),
+    fechaBaja: fechaWeb_(r[8]),
+    observaciones: normalizar_(r[9])
+  };
+}
+
+function fechaWeb_(valor) {
+  if (!valor) return '';
+  if (Object.prototype.toString.call(valor) === '[object Date]' && !isNaN(valor.getTime())) {
+    return Utilities.formatDate(valor, TZ, 'yyyy-MM-dd');
+  }
+  return normalizar_(valor);
+}
+
+function buscarAlumnoPorQrInterno_(qr) {
+  const limpio = normalizarQr_(qr);
+  const mat = soloMatricula_(limpio);
+  const sh = abrirBase_().getSheetByName(HOJAS.ALUMNOS);
+  const lr = sh.getLastRow();
+  if (lr < 2) return null;
+
+  // Busca solo en las columnas clave; evita cargar los 861 alumnos completos
+  // en cada lectura cuando trabajan muchos salones simultáneamente.
+  let celda = sh.getRange(2, 2, lr - 1, 1).createTextFinder(limpio).matchEntireCell(true).findNext();
+  if (!celda && mat) {
+    const variantes = [mat, String(Number(mat)), "'" + mat];
+    for (let v of variantes) {
+      if (!v || v === 'NaN') continue;
+      celda = sh.getRange(2, 1, lr - 1, 1).createTextFinder(v).matchEntireCell(true).findNext();
+      if (celda) break;
+    }
+  }
+  if (!celda) return null;
+  const fila = celda.getRow();
+  return filaAlumnoAObjeto_(sh.getRange(fila,1,1,10).getValues()[0], fila);
+}
+
+function normalizarQr_(valor) {
+  return normalizar_(valor).replace(/\s+/g, '').toUpperCase();
+}
+
+function soloMatricula_(valor) {
+  const s = normalizar_(valor).toUpperCase();
+  const m = s.match(/(\d{1,8})$/);
+  return m ? String(parseInt(m[1], 10)).padStart(4, '0') : '';
+}
+
+function normalizar_(valor) {
+  return String(valor == null ? '' : valor).trim();
+}
+
+function usuario_() {
+  try {
+    return Session.getActiveUser().getEmail() || 'WEBAPP';
+  } catch (e) {
+    return 'WEBAPP';
+  }
+}
+
+function auditar_(accion, matricula, nombre, detalle) {
+  try {
+    const sh = abrirBase_().getSheetByName(HOJAS.AUDITORIA);
+    sh.appendRow([
+      new Date(),
+      normalizar_(accion),
+      soloMatricula_(matricula),
+      normalizar_(nombre),
+      normalizar_(detalle),
+      usuario_()
+    ]);
+  } catch (e) {
+    console.log('Auditoría: ' + e.message);
+  }
+}
+
+/* =========================================================
+   REPORTES RÁPIDOS EN BLOQUE
+   Una sola llamada para diario/semanal/mensual/trimestral.
+   Solo procesa las fechas hábiles que recibe el panel.
+   ========================================================= */
+function obtenerResumenRango(fechas) {
+  fechas = Array.isArray(fechas) ? fechas.map(normalizar_).filter(Boolean) : [];
+  if (!fechas.length) return {};
+
+  const alumnos = obtenerAlumnos({ estatus: 'ACTIVO' });
+  const totalActivos = alumnos.length;
+  const totalPorGrado = {};
+  const totalPorGrupo = {};
+
+  alumnos.forEach(a => {
+    const g = String(a.grado || '');
+    const gg = `${g}°${String(a.grupo || '').toUpperCase()}`;
+    totalPorGrado[g] = (totalPorGrado[g] || 0) + 1;
+    totalPorGrupo[gg] = (totalPorGrupo[gg] || 0) + 1;
+  });
+
+  const wanted = new Set(fechas);
+  const sh = abrirBase_().getSheetByName(HOJAS.ASISTENCIAS);
+  const lr = sh.getLastRow();
+  const porFecha = {};
+
+  fechas.forEach(fecha => {
+    porFecha[fecha] = {
+      totalActivos,
+      presentes: 0,
+      retardos: 0,
+      faltas: totalActivos,
+      porGrado: {},
+      porGrupo: {}
+    };
+    Object.keys(totalPorGrado).forEach(g => {
+      porFecha[fecha].porGrado[g] = { total: totalPorGrado[g], presentes: 0, retardos: 0, faltas: totalPorGrado[g] };
+    });
+    Object.keys(totalPorGrupo).forEach(gg => {
+      porFecha[fecha].porGrupo[gg] = { total: totalPorGrupo[gg], presentes: 0, retardos: 0, faltas: totalPorGrupo[gg] };
+    });
+  });
+
+  if (lr < 2) return porFecha;
+  const rows = sh.getRange(2, 1, lr - 1, sh.getLastColumn()).getDisplayValues();
+  const alumnoPorMat = {};
+  alumnos.forEach(a => alumnoPorMat[String(a.matricula)] = a);
+
+  rows.forEach(r => {
+    const fecha = normalizar_(r[0]);
+    if (!wanted.has(fecha)) return;
+    const mat = soloMatricula_(r[2]);
+    const a = alumnoPorMat[mat];
+    if (!a) return;
+    const estado = normalizar_(r[8]).toUpperCase();
+    if (estado !== 'PRESENTE' && estado !== 'RETARDO') return;
+
+    const res = porFecha[fecha];
+    const g = String(a.grado || '');
+    const gg = `${g}°${String(a.grupo || '').toUpperCase()}`;
+
+    if (estado === 'PRESENTE') res.presentes++; else res.retardos++;
+    res.faltas = Math.max(0, res.totalActivos - res.presentes - res.retardos);
+
+    const rg = res.porGrado[g];
+    if (rg) {
+      if (estado === 'PRESENTE') rg.presentes++; else rg.retardos++;
+      rg.faltas = Math.max(0, rg.total - rg.presentes - rg.retardos);
+    }
+    const rgg = res.porGrupo[gg];
+    if (rgg) {
+      if (estado === 'PRESENTE') rgg.presentes++; else rgg.retardos++;
+      rgg.faltas = Math.max(0, rgg.total - rgg.presentes - rgg.retardos);
+    }
+  });
+
+  return porFecha;
+}
